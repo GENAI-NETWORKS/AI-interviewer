@@ -1,4 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = import.meta.env.VITE_API_URL
+  || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? '/api'
+      : 'https://ai-interviewer-ozl5.onrender.com/api');
 
 // ── Questions (legacy) ────────────────────────────────────────────────────────
 export async function getQuestions() {
