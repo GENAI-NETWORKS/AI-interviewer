@@ -179,6 +179,19 @@ app.use('/api/templates', require('./routes/templates'));
 app.use('/api/students', require('./routes/students'));
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-initDB().then(() => {
-  app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
-}).catch(e => { console.error('❌ DB init failed:', e); process.exit(1); });
+// Start HTTP immediately so Render keeps the service alive
+app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+
+// Try DB init, retry every 15s on failure (no crash)
+async function tryInitDB(attempt) {
+  attempt = attempt || 1;
+  try {
+    await initDB();
+    console.log('✅ DB connected on attempt ' + attempt);
+  } catch(e) {
+    console.error('❌ DB init failed (attempt ' + attempt + '): ' + e.message);
+    console.log('⏳ Retrying DB connection in 15 seconds...');
+    setTimeout(function() { tryInitDB(attempt + 1); }, 15000);
+  }
+}
+tryInitDB();
