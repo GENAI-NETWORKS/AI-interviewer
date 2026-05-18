@@ -1,764 +1,464 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
-import Card from '../components/Card';
-import Button from '../components/Button';
+import { ChevronRight, ChevronLeft, Clock, Shield, AlertTriangle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
-const StudentAssessment = () => {
-    const navigate = useNavigate();
-    const [domainsData, setDomainsData] = useState(null);
-    const [domainKeys, setDomainKeys] = useState([]);
-    const [loadingQuestions, setLoadingQuestions] = useState(true);
+const API = '/api';
 
-    const [currentDomainIndex, setCurrentDomainIndex] = useState(0);
-    const [currentQuestion, setCurrentQuestion] = useState(0);
-    const [answers, setAnswers] = useState({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [studentDetails, setStudentDetails] = useState(null);
-    const [hasStarted, setHasStarted] = useState(false);
-    const [isFinished, setIsFinished] = useState(false);
-    const [scoreData, setScoreData] = useState(null);
+/* ─── CSS ─── */
+const S = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{scrollbar-width:none;-ms-overflow-style:none;overflow-x:hidden;background:#0a0a0f;}
+html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}
+.sa-wrap{min-height:100vh;background:#0a0a0f;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
+.sa-card{background:#0d0d16;border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:2rem;width:100%;max-width:760px;}
+/* loading */
+.sa-spin{width:48px;height:48px;border:3px solid rgba(99,102,241,.2);border-top-color:#6366f1;border-radius:50%;animation:sa-rotate .8s linear infinite;margin:0 auto 1.25rem;}
+@keyframes sa-rotate{to{transform:rotate(360deg);}}
+/* instructions */
+.sa-rule{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:1rem 1.25rem;margin-bottom:.75rem;}
+.sa-rule-title{font-size:.85rem;font-weight:700;color:#e2e8f0;margin-bottom:.3rem;}
+.sa-rule-text{font-size:.8rem;color:#64748b;line-height:1.5;}
+/* header bar */
+.sa-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid rgba(255,255,255,.07);}
+.sa-domain-badge{background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);border-radius:50px;padding:.3rem .8rem;font-size:.72rem;color:#a5b4fc;font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
+.sa-timer{display:inline-flex;align-items:center;gap:.5rem;background:#0a0a0f;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:.4rem .85rem;font-family:monospace;font-size:1.1rem;font-weight:700;color:#f1f5f9;}
+.sa-timer.warn{border-color:rgba(251,191,36,.4);color:#fbbf24;}
+.sa-timer.danger{border-color:rgba(239,68,68,.4);color:#f87171;animation:sa-blink 1s ease-in-out infinite;}
+@keyframes sa-blink{0%,100%{opacity:1;}50%{opacity:.5;}}
+/* progress */
+.sa-progress-bar{height:4px;background:rgba(255,255,255,.07);border-radius:50px;margin-bottom:1.5rem;overflow:hidden;}
+.sa-progress-fill{height:100%;background:linear-gradient(90deg,#6366f1,#a855f7);border-radius:50px;transition:width .4s ease;}
+/* question */
+.sa-q-num{font-size:.78rem;color:#64748b;margin-bottom:.6rem;}
+.sa-q-text{font-size:1rem;font-weight:600;color:#f1f5f9;line-height:1.6;margin-bottom:1.25rem;padding:1rem;background:rgba(99,102,241,.05);border:1px solid rgba(99,102,241,.15);border-radius:12px;}
+.sa-code{font-family:monospace;font-size:.85rem;background:#0a0a0f;border:1px solid rgba(99,102,241,.2);border-radius:8px;padding:.75rem;margin-top:.5rem;color:#a5b4fc;white-space:pre-wrap;display:block;}
+/* options */
+.sa-options{display:flex;flex-direction:column;gap:.65rem;}
+.sa-option{display:flex;align-items:flex-start;gap:.75rem;padding:.85rem 1rem;border:1px solid rgba(255,255,255,.07);border-radius:12px;cursor:pointer;transition:all .2s;color:#94a3b8;font-size:.9rem;line-height:1.5;}
+.sa-option:hover{border-color:rgba(99,102,241,.4);background:rgba(99,102,241,.05);color:#e2e8f0;}
+.sa-option.selected{border-color:#6366f1;background:rgba(99,102,241,.12);color:#e2e8f0;}
+.sa-opt-letter{width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;color:#64748b;}
+.sa-option.selected .sa-opt-letter{background:#6366f1;color:#fff;}
+/* nav */
+.sa-nav{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.07);}
+.sa-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.65rem 1.25rem;border-radius:10px;font-size:.875rem;font-weight:600;cursor:pointer;transition:all .2s;border:none;font-family:'Inter',sans-serif;}
+.sa-btn-prev{background:rgba(255,255,255,.05);color:#94a3b8;}
+.sa-btn-prev:hover:not(:disabled){background:rgba(255,255,255,.1);color:#e2e8f0;}
+.sa-btn-next{background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;}
+.sa-btn-next:hover:not(:disabled){opacity:.88;}
+.sa-btn:disabled{opacity:.35;cursor:not-allowed;}
+.sa-btn-submit{background:linear-gradient(135deg,#059669,#10b981);color:#fff;}
+/* warning overlay */
+.sa-warn-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:999;padding:1.5rem;}
+.sa-warn-box{background:#0d0d16;border:1px solid rgba(251,191,36,.3);border-radius:20px;padding:2rem;max-width:420px;text-align:center;}
+/* result */
+.sa-result-score{font-size:4rem;font-weight:800;line-height:1;margin-bottom:.25rem;}
+.sa-domain-row{display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.05);}
+.sa-domain-row:last-child{border-bottom:none;}
+/* counters */
+.sa-q-counter{font-size:.78rem;color:#64748b;}
+/* domain stepper */
+.sa-dstepper{display:flex;gap:.5rem;margin-bottom:1rem;}
+.sa-dstep{flex:1;height:5px;border-radius:50px;background:rgba(255,255,255,.07);transition:background .4s;}
+.sa-dstep.done{background:#6366f1;}
+.sa-dstep.active{background:linear-gradient(90deg,#6366f1,#a855f7);}
+/* domain complete */
+.sa-dc-wrap{text-align:center;padding:2rem 0;}
+.sa-dc-icon{width:64px;height:64px;border-radius:50%;background:rgba(99,102,241,.15);border:2px solid rgba(99,102,241,.4);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;}
+`;
 
-    // Break Time & Intro State
-    const [isBreakTime, setIsBreakTime] = useState(false);
-    const [isStartIntro, setIsStartIntro] = useState(false);
-    const [breakTimer, setBreakTimer] = useState(10);
-    const [showBreakMessage, setShowBreakMessage] = useState(false);
+const LETTERS = ['A', 'B', 'C', 'D'];
 
-    // Global Timer State (60 minutes = 3600 seconds)
-    const [totalTimer, setTotalTimer] = useState(3600);
+function formatTime(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = (sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
 
-    // Suggestion Panel State
-    const [showSuggestionPanel, setShowSuggestionPanel] = useState(false);
+function parseQuestion(text) {
+  const markers = /(python|javascript|js|sql|java|c\+\+|typescript)\s*:/i;
+  const m = text.match(markers);
+  if (!m) return { pre: text, code: null };
+  return { pre: text.slice(0, m.index).trim(), code: text.slice(m.index + m[0].length).trim() };
+}
 
-    // Anti-Cheat State
-    const [isTerminated, setIsTerminated] = useState(() => localStorage.getItem('testTerminated') === 'true');
-    const [terminationReason, setTerminationReason] = useState(() => localStorage.getItem('terminationReason') || '');
-    const terminationProcessed = useRef(false);
+export default function StudentAssessment() {
+  const navigate = useNavigate();
 
-    const [error, setError] = useState(null);
-    const [warningMessage, setWarningMessage] = useState(null);
+  /* ── state ── */
+  const [stage, setStage]         = useState('loading'); // loading|instructions|test|submitting|result|terminated
+  const [questions, setQuestions] = useState([]);
+  const [jobTitle, setJobTitle]   = useState('');
+  const [answers, setAnswers]     = useState({});          // { qIndex: optionIndex }
+  const [domainIdx, setDomainIdx]  = useState(0); // 0=Technical 1=Domain 2=Behavioral
+  const [qInDomain, setQInDomain]  = useState(0); // 0-19 within domain
+  const [timer, setTimer]         = useState(3600);
+  const [warnMsg, setWarnMsg]     = useState('');
+  const [result, setResult]       = useState(null);
+  const [loadErr, setLoadErr]     = useState('');
+  const [loadStep, setLoadStep]   = useState(0);
 
-    // Initial data for seeding (Fallback)
-    const INITIAL_DOMAINS = {
-        Business: [
-            { id: 'b1', question: "What is a USP?", options: ["Unique Selling Proposition", "Universal Sales Point", "Uniform Selling Price", "User Service Plan"], answer: 0 },
-            { id: 'b2', question: "What is B2B?", options: ["Business to Business", "Back to Business", "Business to Buyer", "Buyer to Business"], answer: 0 },
-            { id: 'b3', question: "What is ROI?", options: ["Return on Investment", "Rate of Interest", "Risk on Investment", "Return on Income"], answer: 0 },
-            { id: 'b4', question: "What is a Stakeholder?", options: ["Anyone interested in the business", "Only shareholders", "Only employees", "Only customers"], answer: 0 },
-            { id: 'b5', question: "What is SWOT?", options: ["Strengths, Weaknesses, Opportunities, Threats", "Sales, Work, Orders, Targets", "Strategy, Work, Organization, Team", "None of the above"], answer: 0 },
-            { id: 'b6', question: "What is a Niche Market?", options: ["A small, specialized market", "A large international market", "A stock market", "A supermarket"], answer: 0 },
-            { id: 'b7', question: "What is B2C?", options: ["Business to Consumer", "Business to Company", "Buyer to Consumer", "Back to Consumer"], answer: 0 },
-            { id: 'b8', question: "What is a KPI?", options: ["Key Performance Indicator", "Key Process Index", "Key Product Info", "Key Person Interest"], answer: 0 },
-            { id: 'b9', question: "What is Equity?", options: ["Ownership interest in a company", "A type of loan", "Employee salary", "Office equipment"], answer: 0 },
-            { id: 'b10', question: "What is a Balance Sheet?", options: ["A financial statement of assets and liabilities", "A list of employees", "A marketing plan", "A sales report"], answer: 0 },
-            { id: 'b11', question: "What is Cash Flow?", options: ["Movement of money in and out", "Profit only", "Loss only", "Bank balance"], answer: 0 },
-            { id: 'b12', question: "What is a Target Audience?", options: ["Specific group of consumers", "Everyone", "Employees", "Competitors"], answer: 0 },
-            { id: 'b13', question: "What is Branding?", options: ["Creating a unique image/name", "Selling products", "Hiring staff", "Accounting"], answer: 0 },
-            { id: 'b14', question: "What is a Startup?", options: ["A newly established business", "A closing business", "A large corporation", "A government agency"], answer: 0 },
-            { id: 'b15', question: "What is Outsourcing?", options: ["Hiring external parties for tasks", "Hiring internal staff", "Selling assets", "Buying shares"], answer: 0 },
-            { id: 'b16', question: "What is a Merger?", options: ["Combining two companies", "Closing a company", "Splitting a company", "Firing employees"], answer: 0 },
-            { id: 'b17', question: "What is Revenue?", options: ["Income from sales", "Profit", "Cost", "Tax"], answer: 0 },
-            { id: 'b18', question: "What is Profit Margin?", options: ["Ratio of profit to revenue", "Total sales", "Total costs", "Employee count"], answer: 0 },
-            { id: 'b19', question: "What is a Business Plan?", options: ["A document outlining goals and strategies", "A list of products", "A receipt", "A contract"], answer: 0 },
-            { id: 'b20', question: "What is Liability?", options: ["Financial debt or obligation", "Asset", "Profit", "Income"], answer: 0 }
-        ],
-        Technical: [
-            { id: 't1', question: "What does HTML stand for?", options: ["Hyper Text Markup Language", "High Tech Modern Language", "Hyper Transfer Markup Language", "Home Tool Markup Language"], answer: 0 },
-            { id: 't2', question: "Which language is used for styling?", options: ["HTML", "JQuery", "CSS", "XML"], answer: 2 },
-            { id: 't3', question: "What is React?", options: ["A Library", "A Framework", "A Database", "A Server"], answer: 0 },
-            { id: 't4', question: "What is Git?", options: ["Version Control System", "Programming Language", "Database", "Operating System"], answer: 0 },
-            { id: 't5', question: "What is an API?", options: ["Application Programming Interface", "Apple Pie Ingredients", "Automated Program Instruction", "None of the above"], answer: 0 },
-            { id: 't6', question: "What is JSON?", options: ["JavaScript Object Notation", "Java Source Open Network", "JavaScript Open Node", "Java System On Net"], answer: 0 },
-            { id: 't7', question: "What is Node.js?", options: ["JavaScript Runtime", "A Database", "A Browser", "An Editor"], answer: 0 },
-            { id: 't8', question: "What is SQL?", options: ["Structured Query Language", "Simple Question List", "System Query Logic", "Standard Queue Link"], answer: 0 },
-            { id: 't9', question: "What is a Component in React?", options: ["Reusable UI piece", "A database table", "A server function", "A CSS class"], answer: 0 },
-            { id: 't10', question: "What is State in React?", options: ["Data managed by component", "External database", "Global variable", "Static file"], answer: 0 },
-            { id: 't11', question: "What is a Hook?", options: ["Function to use React features", "A fishing tool", "A CSS selector", "A database trigger"], answer: 0 },
-            { id: 't12', question: "What is NPM?", options: ["Node Package Manager", "New Project Maker", "Node Program Module", "Net Protocol Map"], answer: 0 },
-            { id: 't13', question: "What is DOM?", options: ["Document Object Model", "Data Object Mode", "Disk Operating Method", "Digital Order Map"], answer: 0 },
-            { id: 't14', question: "What is CSS Grid?", options: ["Layout system", "Database", "Programming language", "Browser"], answer: 0 },
-            { id: 't15', question: "What is Flexbox?", options: ["Layout model", "Animation tool", "Video player", "Audio codec"], answer: 0 },
-            { id: 't16', question: "What is a Variable?", options: ["Container for data", "A constant", "A function", "A file"], answer: 0 },
-            { id: 't17', question: "What is a Loop?", options: ["Repeating code block", "A circle", "A mistake", "A connection"], answer: 0 },
-            { id: 't18', question: "What is an Array?", options: ["Collection of items", "A single number", "A string", "A function"], answer: 0 },
-            { id: 't19', question: "What is a Function?", options: ["Block of reusable code", "A variable", "A file", "A comment"], answer: 0 },
-            { id: 't20', question: "What is Debugging?", options: ["Fixing errors", "Writing code", "Deleting files", "Saving data"], answer: 0 }
-        ],
-        Mentorship: [
-            { id: 'm1', question: "What is the role of a mentor?", options: ["Guide and advise", "Do the work for you", "Criticize only", "None of the above"], answer: 0 },
-            { id: 'm2', question: "What is active listening?", options: ["Fully concentrating on what is being said", "Listening while doing other things", "Interrupting frequently", "Ignoring the speaker"], answer: 0 },
-            { id: 'm3', question: "How to handle feedback?", options: ["Listen and improve", "Ignore it", "Argue back", "Quit"], answer: 0 },
-            { id: 'm4', question: "What is networking?", options: ["Building professional relationships", "Connecting computers", "Social media browsing", "None of the above"], answer: 0 },
-            { id: 'm5', question: "What is a soft skill?", options: ["Communication", "Coding", "Accounting", "Machine Operation"], answer: 0 },
-            { id: 'm6', question: "What is empathy?", options: ["Understanding others' feelings", "Feeling sorry for someone", "Ignoring feelings", "Being angry"], answer: 0 },
-            { id: 'm7', question: "What is time management?", options: ["Planning and controlling time", "Working all the time", "Wasting time", "Watching the clock"], answer: 0 },
-            { id: 'm8', question: "What is leadership?", options: ["Guiding a team", "Bossing people around", "Doing everything alone", "Avoiding responsibility"], answer: 0 },
-            { id: 'm9', question: "What is adaptability?", options: ["Adjusting to change", "Resisting change", "Complaining", "Quitting"], answer: 0 },
-            { id: 'm10', question: "What is conflict resolution?", options: ["Solving disagreements", "Starting fights", "Ignoring problems", "Blaming others"], answer: 0 },
-            { id: 'm11', question: "What is goal setting?", options: ["Defining objectives", "Dreaming", "Wishing", "Guessing"], answer: 0 },
-            { id: 'm12', question: "What is motivation?", options: ["Drive to achieve", "Laziness", "Fear", "Anger"], answer: 0 },
-            { id: 'm13', question: "What is teamwork?", options: ["Collaborating with others", "Working alone", "Competing", "Fighting"], answer: 0 },
-            { id: 'm14', question: "What is professionalism?", options: ["Conduct and behavior", "Wearing a suit", "Being rich", "Being famous"], answer: 0 },
-            { id: 'm15', question: "What is integrity?", options: ["Honesty and morals", "Lying", "Cheating", "Stealing"], answer: 0 },
-            { id: 'm16', question: "What is critical thinking?", options: ["Analyzing objectively", "Guessing", "Believing everything", "Ignoring facts"], answer: 0 },
-            { id: 'm17', question: "What is emotional intelligence?", options: ["Managing emotions", "Being emotional", "Ignoring emotions", "Being cold"], answer: 0 },
-            { id: 'm18', question: "What is resilience?", options: ["Recovering from setbacks", "Giving up", "Crying", "Blaming"], answer: 0 },
-            { id: 'm19', question: "What is self-awareness?", options: ["Knowing oneself", "Ignoring oneself", "Copying others", "Hiding"], answer: 0 },
-            { id: 'm20', question: "What is career development?", options: ["Managing career growth", "Getting a job", "Retiring", "Quitting"], answer: 0 }
-        ]
+  const timerRef   = useRef(null);
+  const terminated = useRef(false);
+  const userRef    = useRef(null);
+  const jobRef     = useRef(null);
+
+  /* ── load questions ── */
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('studentDetails') || 'null');
+    const job  = JSON.parse(localStorage.getItem('selectedJob')    || 'null');
+    if (!user || !job) { navigate('/'); return; }
+    userRef.current = user;
+    jobRef.current  = job;
+
+    setJobTitle(job.title || 'Assessment');
+    setLoadStep(1);
+
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 280000); // 4m40s
+
+    fetch(`${API}/ai-assessment/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_email: user.email, job_id: job.id }),
+      signal: ctrl.signal
+    })
+      .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || `Server error ${r.status}`) }); return r.json(); })
+      .then(data => {
+        clearTimeout(timeout);
+        if (data.error) throw new Error(data.error);
+        const qs = data.questions || [];
+        setQuestions(qs);
+        setLoadStep(4);
+        setTimeout(() => setStage('instructions'), 1200);
+      })
+      .catch(e => {
+        clearTimeout(timeout);
+        const msg = e.name === 'AbortError' ? 'Request timed out — AI took too long. Please try again.' : e.message;
+        setLoadErr(msg);
+      });
+  }, [navigate]);
+
+  /* ── timer ── */
+  useEffect(() => {
+    if (stage !== 'test') return;
+    timerRef.current = setInterval(() => {
+      setTimer(t => {
+        if (t <= 1) { clearInterval(timerRef.current); handleTerminate('Time Limit Exceeded'); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [stage]);
+
+  /* ── anti-cheat ── */
+  const handleTerminate = useCallback(async (reason) => {
+    if (terminated.current) return;
+    terminated.current = true;
+    clearInterval(timerRef.current);
+    setStage('terminated');
+    const user = userRef.current;
+    const job  = jobRef.current;
+    if (user && job) {
+      try {
+        await fetch(`${API}/ai-assessment/submit`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_email: user.email, job_id: job.id, status: 'terminated', reason, answers: {}, questions: [] })
+        });
+      } catch {}
+    }
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    navigate('/');
+  }, [navigate]);
+
+  useEffect(() => {
+    if (stage !== 'test') return;
+    const onHide = () => handleTerminate('Tab Switch / Window Minimised');
+    const onBlur = () => handleTerminate('Window Focus Lost');
+    const onFs   = () => { if (!document.fullscreenElement) handleTerminate('Exited Fullscreen'); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('fullscreenchange', onFs);
     };
+  }, [stage, handleTerminate]);
 
-    useEffect(() => {
-        let isMounted = true;
-        const fetchQuestions = async () => {
-            try {
-                const docRef = doc(db, 'config', 'questions');
-                const docSnap = await getDoc(docRef);
+  /* ── actions ── */
+  function startTest() {
+    document.documentElement.requestFullscreen?.().catch(() => {});
+    setStage('test');
+  }
 
-                if (isMounted) {
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        // Check if data is complete (has 20 questions per domain)
-                        const isComplete = data.Business && data.Business.length >= 20 &&
-                            data.Technical && data.Technical.length >= 20 &&
-                            data.Mentorship && data.Mentorship.length >= 20;
+  function selectOption(idx) {
+    setAnswers(prev => ({ ...prev, [current]: idx }));
+  }
 
-                        if (isComplete) {
-                            setDomainsData(data);
-                            setDomainKeys(Object.keys(data));
-                        } else {
-                            console.log("Updating question bank with full 60-question set...");
-                            // Data exists but is incomplete (old version) - Overwrite
-                            await setDoc(docRef, INITIAL_DOMAINS);
-                            setDomainsData(INITIAL_DOMAINS);
-                            setDomainKeys(Object.keys(INITIAL_DOMAINS));
-                        }
-                    } else {
-                        // Doesn't exist - seed
-                        await setDoc(docRef, INITIAL_DOMAINS);
-                        setDomainsData(INITIAL_DOMAINS);
-                        setDomainKeys(Object.keys(INITIAL_DOMAINS));
-                    }
-                    setLoadingQuestions(false);
-                }
-            } catch (err) {
-                console.error("Error fetching questions:", err);
-                if (isMounted) {
-                    // Fallback to local data if DB fails (e.g. permission error)
-                    console.warn("Using local fallback data due to DB error");
-                    setDomainsData(INITIAL_DOMAINS);
-                    setDomainKeys(Object.keys(INITIAL_DOMAINS));
-                    setError(null); // Clear error to allow proceeding
-                    setLoadingQuestions(false);
-                }
-            }
-        };
+  function goPrev() {
+    if (qInDomain > 0) setQInDomain(q => q - 1);
+    else if (domainIdx > 0) { setDomainIdx(d => d - 1); setQInDomain(19); }
+  }
 
-        fetchQuestions();
+  function goNext() {
+    if (answers[current] === undefined) { setWarnMsg('Please select an answer before continuing.'); return; }
+    if (qInDomain < domainQuestions.length - 1) setQInDomain(q => q + 1);
+  }
 
-        // Failsafe timeout
-        const timer = setTimeout(() => {
-            if (isMounted) {
-                setLoadingQuestions((prev) => {
-                    if (prev) {
-                        console.warn("Question fetching timed out");
-                        return false;
-                    }
-                    return prev;
-                });
-            }
-        }, 2000);
+  function nextDomain() {
+    if (answers[current] === undefined) { setWarnMsg('Please answer the last question before proceeding to the next domain.'); return; }
+    setDomainIdx(d => d + 1);
+    setQInDomain(0);
+  }
 
-        return () => {
-            isMounted = false;
-            clearTimeout(timer);
-        };
-    }, []);
-
-    const currentDomain = domainKeys[currentDomainIndex];
-    const currentDomainQuestions = domainsData ? domainsData[currentDomain] : [];
-
-    useEffect(() => {
-        const details = localStorage.getItem('studentDetails');
-        if (!details) {
-            navigate('/');
-            return;
-        }
-        try {
-            setStudentDetails(JSON.parse(details));
-        } catch (e) {
-            console.error("Invalid student details", e);
-            navigate('/');
-        }
-
-        // Restore state if available
-        const savedState = localStorage.getItem('assessmentState');
-        if (savedState) {
-            try {
-                const parsedState = JSON.parse(savedState);
-                // Only restore if not terminated
-                if (!localStorage.getItem('testTerminated')) {
-                    setAnswers(parsedState.answers || {});
-                    setCurrentDomainIndex(parsedState.currentDomainIndex || 0);
-                    setCurrentQuestion(parsedState.currentQuestion || 0);
-                    setTotalTimer(parsedState.totalTimer || 3600);
-                }
-            } catch (e) {
-                console.error("Error parsing saved state", e);
-            }
-        }
-    }, [navigate]);
-
-    const startTest = () => {
-        // Request fullscreen
-        if (document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch(err => {
-                console.error("Error attempting to enable full-screen mode:", err.message);
-            });
-        }
-
-        setHasStarted(true);
-        setIsStartIntro(true);
-        setBreakTimer(10);
-
-        const timer = setInterval(() => {
-            setBreakTimer((prev) => {
-                if (prev <= 1) {
-                    clearInterval(timer);
-                    setIsStartIntro(false);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-    };
-
-    // Anti-Cheat: Fullscreen & Blur Detection
-    useEffect(() => {
-        if (!hasStarted || isTerminated || isFinished) return;
-
-        const handleVisibilityChange = () => {
-            if (document.hidden) {
-                handleTermination("Tab Switching / Minimized Window");
-            }
-        };
-
-        const handleBlur = () => {
-            handleTermination("Window Focus Lost");
-        };
-
-        const handleFullscreenChange = () => {
-            if (!document.fullscreenElement && hasStarted && !isTerminated && !isFinished) {
-                handleTermination("Exited Fullscreen Mode");
-            }
-        };
-
-        document.addEventListener("visibilitychange", handleVisibilityChange);
-        window.addEventListener("blur", handleBlur);
-        document.addEventListener("fullscreenchange", handleFullscreenChange);
-
-        return () => {
-            document.removeEventListener("visibilitychange", handleVisibilityChange);
-            window.removeEventListener("blur", handleBlur);
-            document.removeEventListener("fullscreenchange", handleFullscreenChange);
-        };
-    }, [hasStarted, isTerminated, isFinished]);
-
-    // Timer Effect
-    useEffect(() => {
-        if (!hasStarted || isTerminated || isFinished) return;
-
-        const timer = setInterval(() => {
-            setTotalTimer((prev) => {
-                if (prev <= 1) {
-                    clearInterval(timer);
-                    handleTermination("Time Limit Exceeded");
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(timer);
-    }, [hasStarted, isTerminated, isFinished]);
-
-    const handleTermination = async (reason) => {
-        if (terminationProcessed.current) return;
-        terminationProcessed.current = true;
-
-        setIsTerminated(true);
-        setTerminationReason(reason);
-        localStorage.setItem('testTerminated', 'true');
-        localStorage.setItem('terminationReason', reason);
-
-        // Update status in Firestore if studentDetails exists
-        if (studentDetails && studentDetails.email) {
-            try {
-                // We need to find the doc first or create a new one with terminated status
-                // For simplicity, we'll just add a new record or you might want to update an existing one
-                // Here we just add a record indicating termination
-                const terminationData = {
-                    ...studentDetails,
-                    score: 0, // Or calculate partial score
-                    domainScores: {},
-                    answers: answers,
-                    completedAt: serverTimestamp(),
-                    status: 'terminated',
-                    reason: reason
-                };
-                await addDoc(collection(db, 'assessments'), terminationData);
-            } catch (e) {
-                console.error("Error logging termination:", e);
-            }
-        }
-
-        // Exit fullscreen
-        if (document.fullscreenElement) {
-            document.exitFullscreen().catch(() => { });
-        }
-
-        navigate('/terminated');
-    };
-
-    // Format time helper
-    const formatTime = (seconds) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    console.log("Render State:", {
-        loadingQuestions,
-        isTerminated,
-        hasStarted,
-        studentDetails: !!studentDetails,
-        domainsData: !!domainsData,
-        error
-    });
-
-    if (!studentDetails) {
-        console.log("Rendering: Initializing...");
-        return (
-            <div className="min-h-screen flex-center">
-                <div className="text-xl text-gray-500 animate-pulse">Initializing...</div>
-            </div>
-        );
+  async function handleSubmit() {
+    if (answers[current] === undefined) { setWarnMsg('Please select an answer before submitting.'); return; }
+    clearInterval(timerRef.current);
+    setStage('submitting');
+    const user = userRef.current;
+    const job  = jobRef.current;
+    try {
+      const res = await fetch(`${API}/ai-assessment/submit`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_email: user.email, job_id: job.id,
+          answers, questions, timeTaken: 3600 - timer, status: 'completed'
+        })
+      });
+      const data = await res.json();
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      setResult(data);
+      setStage('result');
+    } catch(e) {
+      setStage('test');
+      setWarnMsg('Submit failed: ' + e.message);
     }
+  }
 
-    if (loadingQuestions) {
-        console.log("Rendering: Loading Assessment...");
-        return (
-            <div className="min-h-screen flex-center">
-                <div className="text-2xl text-indigo-500 animate-pulse">Loading Assessment...</div>
-            </div>
-        );
-    }
+  /* ─── helpers ─── */
+  const DOMAIN_NAMES    = questions.length ? [...new Set(questions.map(q => q.domain))] : ['Topic 1', 'Topic 2', 'Topic 3'];
+  const current         = domainIdx * 20 + qInDomain;
+  const domainQuestions = questions.slice(domainIdx * 20, domainIdx * 20 + 20);
+  const q               = domainQuestions[qInDomain];
+  const isLastInDomain  = domainQuestions.length > 0 && qInDomain === domainQuestions.length - 1;
+  const isLastDomain    = domainIdx === 2;
+  const progress        = domainQuestions.length ? ((qInDomain + 1) / domainQuestions.length) * 100 : 0;
+  const timerClass      = timer < 300 ? 'sa-timer danger' : timer < 600 ? 'sa-timer warn' : 'sa-timer';
 
-    if (isTerminated) {
-        console.log("Rendering: Terminated");
-        return (
-            <div className="min-h-screen flex-center bg-slate-900">
-                <div className="text-xl text-red-500 animate-pulse">Assessment Terminated. Redirecting...</div>
-            </div>
-        );
-    }
+  /* ─── renders ─── */
 
-
-
-
-
-
-
-    if (!hasStarted) {
-        return (
-            <div className="min-h-screen flex-center p-4">
-                <Card className="w-full max-w-2xl animate-fade-in">
-                    <h1 className="text-3xl font-bold text-center mb-6 text-gradient">Instructions (Read Carefully)
-                    </h1>
-
-                    <div className="space-y-4 mb-8 text-gray-300">
-                        <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                            <h3 className="font-bold text-white mb-2">1. Fullscreen Mode</h3>
-                            <p className="text-sm">The test will be conducted in fullscreen mode. Exiting fullscreen will terminate the test.</p>
-                        </div>
-
-                        <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                            <h3 className="font-bold text-white mb-2">2. No Tab Switching</h3>
-                            <p className="text-sm">Switching tabs or minimizing the window is strictly prohibited and will result in immediate termination.</p>
-                        </div>
-
-                        <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                            <h3 className="font-bold text-white mb-2">3. Focus</h3>
-                            <p className="text-sm">Do not click outside the test window. Losing focus will terminate the test.</p>
-                        </div>
-
-                        <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                            <h3 className="font-bold text-white mb-2">4. Mandatory Answering</h3>
-                            <p className="text-sm">You must answer all questions in all domains before submitting.</p>
-                        </div>
-
-                        <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                            <h3 className="font-bold text-white mb-2">5. Domain Knowledge</h3>
-                            <p className="text-sm">The assessment covers three domains: Business, Technical, and Mentorship. You will proceed through them sequentially.</p>
-                        </div>
-
-                        <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                            <h3 className="font-bold text-white mb-2">6. Time Limit</h3>
-                            <p className="text-sm">You have a total of 60 minutes to complete the entire assessment. Manage your time wisely across all sections.</p>
-                        </div>
-                    </div>
-
-                    <Button onClick={startTest} className="w-full">
-                        I Understand, Start Test
-                    </Button>
-                </Card>
-            </div>
-        );
-    }
-
-    if (error || !domainsData || Object.keys(domainsData).length === 0) {
-        return (
-            <div className="min-h-screen flex-center p-4">
-                <Card className="w-full max-w-md border-red-500 bg-red-900/10 text-center">
-                    <h2 className="text-xl font-bold text-red-500 mb-4">Connection Error</h2>
-                    <p className="text-gray-300 mb-6">{error || "Failed to load assessment questions. Please check your connection."}</p>
-                    <Button onClick={() => window.location.reload()} className="bg-red-600 hover:bg-red-700 w-full">
-                        Retry
-                    </Button>
-                </Card>
-            </div>
-        );
-    }
-
-    if (showSuggestionPanel) {
-        return (
-            <div className="min-h-screen flex-center p-4">
-                <Card className="w-full max-w-md border-yellow-500/50 bg-yellow-900/10">
-                    <div className="text-center">
-                        <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex-center mx-auto mb-4">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                        </div>
-                        <h2 className="text-2xl font-bold text-yellow-500 mb-2">Suggestion</h2>
-                        <p className="text-gray-300 mb-6">
-                            You have not answered all questions. Since you cannot go back, you must start the assessment again.
-                        </p>
-                        <Button onClick={() => {
-                            if (document.fullscreenElement) {
-                                document.exitFullscreen().catch(() => { });
-                            }
-                            localStorage.removeItem('studentDetails');
-                            localStorage.removeItem('assessmentState');
-                            localStorage.removeItem('testTerminated');
-                            localStorage.removeItem('terminationReason');
-                            navigate('/');
-                        }} className="bg-yellow-600 hover:bg-yellow-700 w-full">
-                            Back to Home
-                        </Button>
-                    </div>
-                </Card>
-            </div>
-        );
-    }
-
-    if (warningMessage) {
-        return (
-            <div className="min-h-screen flex-center p-4">
-                <Card className="w-full max-w-md border-orange-500 bg-orange-900/10 text-center">
-                    <div className="w-16 h-16 bg-orange-500/20 rounded-full flex-center mx-auto mb-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                    </div>
-                    <h2 className="text-xl font-bold text-orange-500 mb-4">Attention Needed</h2>
-                    <p className="text-gray-300 mb-6">{warningMessage}</p>
-                    <Button onClick={() => setWarningMessage(null)} className="bg-orange-600 hover:bg-orange-700 w-full">
-                        Okay, I'll Answer
-                    </Button>
-                </Card>
-            </div>
-        );
-    }
-
-    if (isSubmitting) {
-        return (
-            <div className="min-h-screen flex-center p-4">
-                <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <h2 className="text-2xl font-bold text-white animate-pulse">Submitting Assessment...</h2>
-                    <p className="text-gray-400 mt-2">Please wait while we record your answers.</p>
-                </div>
-            </div>
-        );
-    }
-
-
-
-    if (isStartIntro) {
-        return (
-            <div className="min-h-screen flex-center p-4">
-                <Card className="w-full max-w-md animate-fade-in text-center">
-                    <div className="w-24 h-24 bg-indigo-500/20 rounded-full flex-center mx-auto mb-6 animate-pulse border-4 border-indigo-500/30">
-                        <span className="text-4xl font-bold text-indigo-400">{breakTimer}</span>
-                    </div>
-                    <h2 className="text-3xl font-bold text-white mb-2">Welcome!</h2>
-                    <p className="text-gray-400 text-lg mb-4">
-                        Starting <span className="text-indigo-400 font-semibold">{domainKeys[0]}</span> Domain...
-                    </p>
-                    <p className="text-lg text-indigo-300/80 italic animate-pulse text-center">
-                        AI is cooking up your questions… wait a moment ✦
-                    </p>
-                </Card>
-            </div>
-        );
-    }
-
-
-
-    if (isBreakTime) {
-        return (
-            <div className="min-h-screen flex-center p-4">
-                <Card className="w-full max-w-md animate-fade-in text-center">
-                    <div className="w-24 h-24 bg-indigo-500/20 rounded-full flex-center mx-auto mb-6 animate-pulse border-4 border-indigo-500/30">
-                        <span className="text-4xl font-bold text-indigo-400">{breakTimer}</span>
-                    </div>
-                    <h2 className="text-3xl font-bold text-white mb-2">Take a Breath</h2>
-                    {breakTimer > 7 ? (
-                        <p className="text-gray-400 text-lg">
-                            Moving to <span className="text-indigo-400 font-semibold">{domainKeys[currentDomainIndex]}</span> Domain...
-                        </p>
-                    ) : (
-                        <p className="text-lg text-indigo-300/80 italic animate-pulse text-center">
-                            Your questions are in the AI oven... Please wait ✦
-                        </p>
-                    )}
-                </Card>
-            </div>
-        );
-    }
-
-    const question = currentDomainQuestions ? currentDomainQuestions[currentQuestion] : null;
-
-    if (!question || !Array.isArray(question.options)) {
-        return (
-            <div className="min-h-screen flex-center p-4">
-                <Card className="w-full max-w-md border-red-500 bg-red-900/10 text-center">
-                    <h2 className="text-xl font-bold text-red-500 mb-4">Data Error</h2>
-                    <p className="text-gray-300 mb-6">
-                        The question data seems corrupted or missing.
-                        <br />
-                        <span className="text-sm text-gray-500">
-                            {question ? "Missing options" : "Question not found"}
-                        </span>
-                    </p>
-                    <Button onClick={() => {
-                        localStorage.clear();
-                        window.location.href = '/';
-                    }} className="bg-red-600 hover:bg-red-700 w-full">
-                        Reset & Return Home
-                    </Button>
-                </Card>
-            </div>
-        );
-    }
-    const handleOptionSelect = (optionIndex) => {
-        setAnswers(prev => ({
-            ...prev,
-            [currentDomain]: {
-                ...prev[currentDomain],
-                [currentQuestion]: optionIndex
-            }
-        }));
-    };
-
-    const handleNext = () => {
-        // Check if answered
-        if (answers[currentDomain]?.[currentQuestion] === undefined) {
-            setWarningMessage("Please answer the question before proceeding.");
-            return;
-        }
-
-        if (currentQuestion < currentDomainQuestions.length - 1) {
-            setCurrentQuestion(prev => prev + 1);
-        } else {
-            // Next Domain
-            if (currentDomainIndex < domainKeys.length - 1) {
-                setCurrentDomainIndex(prev => prev + 1);
-                setCurrentQuestion(0);
-                setIsBreakTime(true);
-                setBreakTimer(10);
-                const timer = setInterval(() => {
-                    setBreakTimer((prev) => {
-                        if (prev <= 1) {
-                            clearInterval(timer);
-                            setIsBreakTime(false);
-                            return 0;
-                        }
-                        return prev - 1;
-                    });
-                }, 1000);
-            }
-        }
-    };
-
-    const handlePrevious = () => {
-        if (currentQuestion > 0) {
-            setCurrentQuestion(prev => prev - 1);
-        } else if (currentDomainIndex > 0) {
-            const prevDomain = domainKeys[currentDomainIndex - 1];
-            setCurrentDomainIndex(prev => prev - 1);
-            setCurrentQuestion(domainsData[prevDomain].length - 1);
-        }
-    };
-
-    const handleSubmit = async () => {
-        // Check if last question answered
-        if (answers[currentDomain]?.[currentQuestion] === undefined) {
-            setWarningMessage("Please answer the question before submitting.");
-            return;
-        }
-
-        setIsSubmitting(true);
-        try {
-            // Calculate Score
-            let totalScore = 0;
-            let domainScores = {};
-
-            domainKeys.forEach(domain => {
-                let domainScore = 0;
-                const domainAnswers = answers[domain] || {};
-                const questions = domainsData[domain];
-
-                questions.forEach((q, idx) => {
-                    if (domainAnswers[idx] === q.answer) {
-                        domainScore++;
-                    }
-                });
-
-                domainScores[domain] = domainScore;
-                totalScore += domainScore;
-            });
-
-            const resultData = {
-                ...studentDetails,
-                score: totalScore,
-                totalQuestions: 60,
-                percentage: (totalScore / 60) * 100,
-                domainScores,
-                answers,
-                completedAt: serverTimestamp(),
-                status: 'completed'
-            };
-
-            await addDoc(collection(db, 'assessments'), resultData);
-
-            // Save to local storage for the completion page
-            localStorage.setItem('scoreData', JSON.stringify({
-                score: totalScore,
-                domainScores,
-                totalQuestions: 60
-            }));
-
-            localStorage.removeItem('assessmentState');
-            setIsFinished(true);
-            navigate('/completed', {
-                state: {
-                    score: totalScore,
-                    totalQuestions: 60,
-                    percentage: (totalScore / 60) * 100,
-                    domainScores,
-                    studentDetails
-                }
-            });
-        } catch (error) {
-            console.error("Error submitting assessment:", error);
-            setError("Failed to submit assessment. Please try again.");
-            setIsSubmitting(false);
-        }
-    };
-
-    const isLastQuestionInDomain = currentQuestion === currentDomainQuestions.length - 1;
-    const isLastDomain = currentDomainIndex === domainKeys.length - 1;
-
+  // LOADING
+  if (stage === 'loading') {
+    const LOAD_STEPS = [
+      'Connecting and analyzing resume…',
+      'Generating questions for Domain 1 (1/3)…',
+      'Generating questions for Domain 2 (2/3)…',
+      'Generating questions for Domain 3 (3/3)…',
+      'Saving assessment…'
+    ];
     return (
-        <div className="min-h-screen flex-center p-4">
-            <Card className="w-full max-w-2xl">
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h2 className="text-xl font-bold text-indigo-400 mb-1">{currentDomain} Domain</h2>
-                        <p className="text-sm text-gray-400">Question {currentQuestion + 1}/{currentDomainQuestions.length}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="bg-white text-slate-900 font-mono font-bold text-2xl rounded-md shadow-lg px-3 py-2 min-w-[3.5rem] text-center tracking-widest">
-                            {Math.floor(totalTimer / 60).toString().padStart(2, '0')}
-                        </div>
-                        <span className="text-white font-bold text-2xl animate-pulse">:</span>
-                        <div className="bg-white text-slate-900 font-mono font-bold text-2xl rounded-md shadow-lg px-3 py-2 min-w-[3.5rem] text-center tracking-widest">
-                            {(totalTimer % 60).toString().padStart(2, '0')}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mb-8">
-                    <h3 className="text-2xl font-bold mb-6">{question.question}</h3>
-                    <div className="space-y-3">
-                        {question.options.map((option, index) => (
-                            <div
-                                key={index}
-                                onClick={() => handleOptionSelect(index)}
-                                className={`p-4 rounded-lg border cursor-pointer transition-all ${answers[currentDomain] && answers[currentDomain][currentQuestion] === index
-                                    ? 'border-indigo-500 bg-indigo-500/20 text-white'
-                                    : 'border-slate-700 hover:border-slate-500 text-gray-300'
-                                    }`}
-                            >
-                                {option}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="flex justify-between mt-8">
-                    <Button
-                        onClick={handlePrevious}
-                        disabled={currentQuestion === 0 && currentDomainIndex === 0}
-                        className={`bg-slate-700 hover:bg-slate-600 ${currentQuestion === 0 && currentDomainIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                        Previous
-                    </Button>
-                    {isLastQuestionInDomain && isLastDomain ? (
-                        <Button onClick={handleSubmit} disabled={isSubmitting}>
-                            {isSubmitting ? 'Submitting...' : 'Submit Assessment'}
-                        </Button>
-                    ) : (
-                        <Button onClick={handleNext}>
-                            {isLastQuestionInDomain ? `Next Domain: ${domainKeys[currentDomainIndex + 1]}` : 'Next'}
-                        </Button>
-                    )}
-                </div>
-            </Card>
+      <div className="sa-wrap"><style>{S}</style>
+        <div className="sa-card" style={{ textAlign:'center', padding:'3rem' }}>
+          {loadErr ? (
+            <>
+              <XCircle size={48} color="#f87171" style={{ margin:'0 auto 1rem' }} />
+              <div style={{ color:'#f87171', fontWeight:700, fontSize:'1.1rem', marginBottom:'.5rem' }}>Generation Failed</div>
+              <div style={{ color:'#64748b', fontSize:'.85rem', marginBottom:'1.5rem', lineHeight:1.6 }}>{loadErr}</div>
+              <button className="sa-btn sa-btn-next" onClick={() => window.location.reload()}>Try Again</button>
+            </>
+          ) : (
+            <>
+              <div className="sa-spin" />
+              <div style={{ color:'#a5b4fc', fontWeight:700, fontSize:'1.1rem', marginBottom:'.4rem' }}>Generating Your Assessment…</div>
+              <div style={{ color:'#64748b', fontSize:'.82rem', marginBottom:'1.5rem' }}>AI crafting 60 personalised questions · 1–3 mins</div>
+              <div style={{ textAlign:'left', maxWidth:320, margin:'0 auto' }}>
+                {LOAD_STEPS.map((s, i) => (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:'.6rem', padding:'.35rem 0', fontSize:'.82rem',
+                    color: i < loadStep ? '#34d399' : i === loadStep ? '#a5b4fc' : '#334155' }}>
+                    {i < loadStep
+                      ? <CheckCircle size={14} color="#34d399" style={{flexShrink:0}} />
+                      : i === loadStep
+                      ? <Loader2 size={14} color="#a5b4fc" style={{ animation:'sa-rotate .8s linear infinite', flexShrink:0 }} />
+                      : <div style={{ width:14, height:14, borderRadius:'50%', border:'1px solid #334155', flexShrink:0 }} />}
+                    {s}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
+      </div>
     );
-    // Fallback for unknown state
+  }
+
+  // INSTRUCTIONS
+  if (stage === 'instructions') return (
+    <div className="sa-wrap"><style>{S}</style>
+      <div className="sa-card">
+        <div style={{ textAlign:'center', marginBottom:'1.5rem' }}>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:'.5rem', background:'rgba(99,102,241,.12)', border:'1px solid rgba(99,102,241,.3)', borderRadius:50, padding:'.35rem .9rem', fontSize:'.72rem', color:'#a5b4fc', fontWeight:600, textTransform:'uppercase', marginBottom:'1rem' }}>Step 4 of 4</div>
+          <h1 style={{ fontSize:'1.5rem', fontWeight:800, color:'#f1f5f9', marginBottom:'.4rem' }}>Assessment <span style={{ background:'linear-gradient(135deg,#6366f1,#a855f7)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>Instructions</span></h1>
+          <p style={{ color:'#64748b', fontSize:'.875rem' }}>{jobTitle} — 60 Questions · 60 Minutes</p>
+        </div>
+
+        {[
+          ['Fullscreen Mode', 'The test runs in fullscreen. Exiting fullscreen will immediately terminate your test.'],
+          ['No Tab Switching', 'Switching tabs or minimising the window will terminate the test automatically.'],
+          ['Stay Focused', 'Clicking outside the test window will also terminate the test.'],
+          ['Answer All Questions', 'You must answer each question before moving to the next.'],
+          ['Time Limit', 'You have exactly 60 minutes. The timer starts when you click "Start Test".'],
+        ].map(([t, d]) => (
+          <div key={t} className="sa-rule">
+            <div className="sa-rule-title"><Shield size={12} style={{ marginRight:5, verticalAlign:'middle' }} />{t}</div>
+            <div className="sa-rule-text">{d}</div>
+          </div>
+        ))}
+
+        <button className="sa-btn sa-btn-next" style={{ width:'100%', justifyContent:'center', marginTop:'1rem', padding:'.85rem' }} onClick={startTest}>
+          I Understand — Start Test <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+
+  // SUBMITTING
+  if (stage === 'submitting') return (
+    <div className="sa-wrap"><style>{S}</style>
+      <div className="sa-card" style={{ textAlign:'center', padding:'3rem' }}>
+        <div className="sa-spin" />
+        <div style={{ color:'#a5b4fc', fontWeight:700, fontSize:'1.1rem', marginBottom:'.4rem' }}>Submitting Assessment…</div>
+        <div style={{ color:'#64748b', fontSize:'.85rem' }}>Calculating your score and generating AI feedback.</div>
+      </div>
+    </div>
+  );
+
+  // RESULT
+  if (stage === 'result' && result) {
+    const pct = result.percentage?.toFixed(1) ?? 0;
+    const verdict = result.aiAnalysis?.verdict || (pct >= 70 ? 'Selected' : pct >= 40 ? 'On Hold' : 'Rejected');
+    const verdictColor = verdict === 'Selected' ? '#34d399' : verdict === 'On Hold' ? '#fbbf24' : '#f87171';
     return (
-        <div className="min-h-screen flex-center p-4">
-            <Card className="w-full max-w-md border-yellow-500 bg-yellow-900/10 text-center">
-                <h2 className="text-xl font-bold text-yellow-500 mb-4">State Error</h2>
-                <p className="text-gray-300 mb-6">
-                    Application is in an unknown state.
-                    <br />
-                    <span className="text-xs font-mono text-gray-500">
-                        Details: {JSON.stringify({ loadingQuestions, isTerminated, hasStarted, hasData: !!domainsData })}
-                    </span>
-                </p>
-                <Button onClick={() => window.location.reload()} className="bg-yellow-600 hover:bg-yellow-700 w-full">
-                    Reload
-                </Button>
-            </Card>
-        </div>
-    );
-};
+      <div className="sa-wrap"><style>{S}</style>
+        <div className="sa-card">
+          <div style={{ textAlign:'center', marginBottom:'1.5rem' }}>
+            <div className="sa-result-score" style={{ color: verdictColor }}>{result.score}<span style={{ fontSize:'1.5rem', color:'#475569' }}>/{questions.length}</span></div>
+            <div style={{ fontSize:'.85rem', color:'#64748b', marginBottom:'.75rem' }}>Total Score · {pct}%</div>
+            <div style={{ display:'inline-block', padding:'.3rem .9rem', borderRadius:50, fontSize:'.78rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', background: verdictColor + '22', color: verdictColor, border: `1px solid ${verdictColor}55` }}>{verdict}</div>
+          </div>
 
-export default StudentAssessment;
+          <div style={{ background:'rgba(255,255,255,.03)', borderRadius:12, padding:'1rem', marginBottom:'1rem' }}>
+            {Object.entries(result.domainScores || {}).map(([d, s]) => (
+              <div key={d} className="sa-domain-row">
+                <span style={{ color:'#94a3b8', fontSize:'.875rem' }}>{d}</span>
+                <span style={{ color:'#f1f5f9', fontWeight:700 }}>{s}/20</span>
+              </div>
+            ))}
+          </div>
+
+          {result.aiAnalysis?.performanceSummary && (
+            <div style={{ background:'rgba(99,102,241,.06)', border:'1px solid rgba(99,102,241,.15)', borderRadius:12, padding:'1rem', marginBottom:'1rem', fontSize:'.875rem', color:'#94a3b8', lineHeight:1.6 }}>
+              {result.aiAnalysis.performanceSummary}
+            </div>
+          )}
+
+          <button className="sa-btn sa-btn-next" style={{ width:'100%', justifyContent:'center', padding:'.85rem' }} onClick={() => navigate('/')}>
+            <CheckCircle size={16} /> Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // TEST
+  if (stage !== 'test' || !q) return null;
+
+  const parsed = parseQuestion(q.question || '');
+
+  return (
+    <div className="sa-wrap"><style>{S}</style>
+      {warnMsg && (
+        <div className="sa-warn-overlay">
+          <div className="sa-warn-box">
+            <AlertTriangle size={40} color="#fbbf24" style={{ margin:'0 auto 1rem' }} />
+            <div style={{ color:'#fbbf24', fontWeight:700, fontSize:'1rem', marginBottom:'.5rem' }}>Attention</div>
+            <div style={{ color:'#94a3b8', fontSize:'.875rem', marginBottom:'1.25rem' }}>{warnMsg}</div>
+            <button className="sa-btn sa-btn-next" style={{ width:'100%', justifyContent:'center' }} onClick={() => setWarnMsg('')}>OK, Got it</button>
+          </div>
+        </div>
+      )}
+
+      <div className="sa-card">
+        {/* domain stepper */}
+        <div className="sa-dstepper">
+          {DOMAIN_NAMES.map((d,i) => (
+            <div key={d} className={`sa-dstep${i < domainIdx ? ' done' : i === domainIdx ? ' active' : ''}`} title={d} />
+          ))}
+        </div>
+
+        {/* header */}
+        <div className="sa-header">
+          <div style={{ display:'flex', alignItems:'center', gap:'.75rem' }}>
+            <span className="sa-domain-badge">{DOMAIN_NAMES[domainIdx]}</span>
+            <span className="sa-q-counter">Domain {domainIdx + 1}/3 &nbsp;·&nbsp; Q {qInDomain + 1}/20</span>
+          </div>
+          <div className={timerClass}>
+            <Clock size={14} />
+            {formatTime(timer)}
+          </div>
+        </div>
+
+        {/* progress within domain */}
+        <div className="sa-progress-bar">
+          <div className="sa-progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+
+        {/* question */}
+        <div className="sa-q-num">Question {qInDomain + 1} of 20 &nbsp;·&nbsp; {DOMAIN_NAMES[domainIdx]} Domain</div>
+        <div className="sa-q-text">
+          {parsed.pre}
+          {parsed.code && <code className="sa-code">{parsed.code}</code>}
+        </div>
+
+        {/* options */}
+        <div className="sa-options">
+          {(q.options || []).map((opt, i) => (
+            <div
+              key={i}
+              className={`sa-option${answers[current] === i ? ' selected' : ''}`}
+              onClick={() => selectOption(i)}
+            >
+              <span className="sa-opt-letter">{LETTERS[i]}</span>
+              <span>{opt}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* navigation */}
+        <div className="sa-nav">
+          <button className="sa-btn sa-btn-prev" onClick={goPrev} disabled={domainIdx === 0 && qInDomain === 0}>
+            <ChevronLeft size={16} /> Previous
+          </button>
+          {isLastInDomain && isLastDomain ? (
+            <button className="sa-btn sa-btn-next sa-btn-submit" onClick={handleSubmit}>
+              <CheckCircle size={16} /> Submit Assessment
+            </button>
+          ) : isLastInDomain ? (
+            <button
+              className="sa-btn sa-btn-next"
+              style={{ background:'linear-gradient(135deg,#059669,#10b981)', gap:'.5rem' }}
+              onClick={nextDomain}
+            >
+              Next Domain: {DOMAIN_NAMES[domainIdx + 1]} <ChevronRight size={16} />
+            </button>
+          ) : (
+            <button className="sa-btn sa-btn-next" onClick={goNext}>
+              Next <ChevronRight size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

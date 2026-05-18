@@ -1,306 +1,300 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
-import Card from '../components/Card';
-import Input from '../components/Input';
-import Button from '../components/Button';
+import { Bot, BarChart2, ShieldCheck, Zap, Mail, Lock, User, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { checkStudentStatus, studentRegister, studentLogin, studentGoogleLogin } from '../firebaseConfig';
+import { auth, googleProvider } from '../firebase';
+import { signInWithPopup } from 'firebase/auth';
+import logoImg from '../assets/logo.png';
 
-// Initial data for seeding (Fallback)
-const INITIAL_DOMAINS = {
-    Business: [
-        { id: 'b1', question: "What is a USP?", options: ["Unique Selling Proposition", "Universal Sales Point", "Uniform Selling Price", "User Service Plan"], answer: 0 },
-        { id: 'b2', question: "What is B2B?", options: ["Business to Business", "Back to Business", "Business to Buyer", "Buyer to Business"], answer: 0 },
-        { id: 'b3', question: "What is ROI?", options: ["Return on Investment", "Rate of Interest", "Risk on Investment", "Return on Income"], answer: 0 },
-        { id: 'b4', question: "What is a Stakeholder?", options: ["Anyone interested in the business", "Only shareholders", "Only employees", "Only customers"], answer: 0 },
-        { id: 'b5', question: "What is SWOT?", options: ["Strengths, Weaknesses, Opportunities, Threats", "Sales, Work, Orders, Targets", "Strategy, Work, Organization, Team", "None of the above"], answer: 0 },
-        { id: 'b6', question: "What is a Niche Market?", options: ["A small, specialized market", "A large international market", "A stock market", "A supermarket"], answer: 0 },
-        { id: 'b7', question: "What is B2C?", options: ["Business to Consumer", "Business to Company", "Buyer to Consumer", "Back to Consumer"], answer: 0 },
-        { id: 'b8', question: "What is a KPI?", options: ["Key Performance Indicator", "Key Process Index", "Key Product Info", "Key Person Interest"], answer: 0 },
-        { id: 'b9', question: "What is Equity?", options: ["Ownership interest in a company", "A type of loan", "Employee salary", "Office equipment"], answer: 0 },
-        { id: 'b10', question: "What is a Balance Sheet?", options: ["A financial statement of assets and liabilities", "A list of employees", "A marketing plan", "A sales report"], answer: 0 },
-        { id: 'b11', question: "What is Cash Flow?", options: ["Movement of money in and out", "Profit only", "Loss only", "Bank balance"], answer: 0 },
-        { id: 'b12', question: "What is a Target Audience?", options: ["Specific group of consumers", "Everyone", "Employees", "Competitors"], answer: 0 },
-        { id: 'b13', question: "What is Branding?", options: ["Creating a unique image/name", "Selling products", "Hiring staff", "Accounting"], answer: 0 },
-        { id: 'b14', question: "What is a Startup?", options: ["A newly established business", "A closing business", "A large corporation", "A government agency"], answer: 0 },
-        { id: 'b15', question: "What is Outsourcing?", options: ["Hiring external parties for tasks", "Hiring internal staff", "Selling assets", "Buying shares"], answer: 0 },
-        { id: 'b16', question: "What is a Merger?", options: ["Combining two companies", "Closing a company", "Splitting a company", "Firing employees"], answer: 0 },
-        { id: 'b17', question: "What is Revenue?", options: ["Income from sales", "Profit", "Cost", "Tax"], answer: 0 },
-        { id: 'b18', question: "What is Profit Margin?", options: ["Ratio of profit to revenue", "Total sales", "Total costs", "Employee count"], answer: 0 },
-        { id: 'b19', question: "What is a Business Plan?", options: ["A document outlining goals and strategies", "A list of products", "A receipt", "A contract"], answer: 0 },
-        { id: 'b20', question: "What is Liability?", options: ["Financial debt or obligation", "Asset", "Profit", "Income"], answer: 0 }
-    ],
-    Technical: [
-        { id: 't1', question: "What does HTML stand for?", options: ["Hyper Text Markup Language", "High Tech Modern Language", "Hyper Transfer Markup Language", "Home Tool Markup Language"], answer: 0 },
-        { id: 't2', question: "Which language is used for styling?", options: ["HTML", "JQuery", "CSS", "XML"], answer: 2 },
-        { id: 't3', question: "What is React?", options: ["A Library", "A Framework", "A Database", "A Server"], answer: 0 },
-        { id: 't4', question: "What is Git?", options: ["Version Control System", "Programming Language", "Database", "Operating System"], answer: 0 },
-        { id: 't5', question: "What is an API?", options: ["Application Programming Interface", "Apple Pie Ingredients", "Automated Program Instruction", "None of the above"], answer: 0 },
-        { id: 't6', question: "What is JSON?", options: ["JavaScript Object Notation", "Java Source Open Network", "JavaScript Open Node", "Java System On Net"], answer: 0 },
-        { id: 't7', question: "What is Node.js?", options: ["JavaScript Runtime", "A Database", "A Browser", "An Editor"], answer: 0 },
-        { id: 't8', question: "What is SQL?", options: ["Structured Query Language", "Simple Question List", "System Query Logic", "Standard Queue Link"], answer: 0 },
-        { id: 't9', question: "What is a Component in React?", options: ["Reusable UI piece", "A database table", "A server function", "A CSS class"], answer: 0 },
-        { id: 't10', question: "What is State in React?", options: ["Data managed by component", "External database", "Global variable", "Static file"], answer: 0 },
-        { id: 't11', question: "What is a Hook?", options: ["Function to use React features", "A fishing tool", "A CSS selector", "A database trigger"], answer: 0 },
-        { id: 't12', question: "What is NPM?", options: ["Node Package Manager", "New Project Maker", "Node Program Module", "Net Protocol Map"], answer: 0 },
-        { id: 't13', question: "What is DOM?", options: ["Document Object Model", "Data Object Mode", "Disk Operating Method", "Digital Order Map"], answer: 0 },
-        { id: 't14', question: "What is CSS Grid?", options: ["Layout system", "Database", "Programming language", "Browser"], answer: 0 },
-        { id: 't15', question: "What is Flexbox?", options: ["Layout model", "Animation tool", "Video player", "Audio codec"], answer: 0 },
-        { id: 't16', question: "What is a Variable?", options: ["Container for data", "A constant", "A function", "A file"], answer: 0 },
-        { id: 't17', question: "What is a Loop?", options: ["Repeating code block", "A circle", "A mistake", "A connection"], answer: 0 },
-        { id: 't18', question: "What is an Array?", options: ["Collection of items", "A single number", "A string", "A function"], answer: 0 },
-        { id: 't19', question: "What is a Function?", options: ["Block of reusable code", "A variable", "A file", "A comment"], answer: 0 },
-        { id: 't20', question: "What is Debugging?", options: ["Fixing errors", "Writing code", "Deleting files", "Saving data"], answer: 0 }
-    ],
-    Mentorship: [
-        { id: 'm1', question: "What is the role of a mentor?", options: ["Guide and advise", "Do the work for you", "Criticize only", "None of the above"], answer: 0 },
-        { id: 'm2', question: "What is active listening?", options: ["Fully concentrating on what is being said", "Listening while doing other things", "Interrupting frequently", "Ignoring the speaker"], answer: 0 },
-        { id: 'm3', question: "How to handle feedback?", options: ["Listen and improve", "Ignore it", "Argue back", "Quit"], answer: 0 },
-        { id: 'm4', question: "What is networking?", options: ["Building professional relationships", "Connecting computers", "Social media browsing", "None of the above"], answer: 0 },
-        { id: 'm5', question: "What is a soft skill?", options: ["Communication", "Coding", "Accounting", "Machine Operation"], answer: 0 },
-        { id: 'm6', question: "What is empathy?", options: ["Understanding others' feelings", "Feeling sorry for someone", "Ignoring feelings", "Being angry"], answer: 0 },
-        { id: 'm7', question: "What is time management?", options: ["Planning and controlling time", "Working all the time", "Wasting time", "Watching the clock"], answer: 0 },
-        { id: 'm8', question: "What is leadership?", options: ["Guiding a team", "Bossing people around", "Doing everything alone", "Avoiding responsibility"], answer: 0 },
-        { id: 'm9', question: "What is adaptability?", options: ["Adjusting to change", "Resisting change", "Complaining", "Quitting"], answer: 0 },
-        { id: 'm10', question: "What is conflict resolution?", options: ["Solving disagreements", "Starting fights", "Ignoring problems", "Blaming others"], answer: 0 },
-        { id: 'm11', question: "What is goal setting?", options: ["Defining objectives", "Dreaming", "Wishing", "Guessing"], answer: 0 },
-        { id: 'm12', question: "What is motivation?", options: ["Drive to achieve", "Laziness", "Fear", "Anger"], answer: 0 },
-        { id: 'm13', question: "What is teamwork?", options: ["Collaborating with others", "Working alone", "Competing", "Fighting"], answer: 0 },
-        { id: 'm14', question: "What is professionalism?", options: ["Conduct and behavior", "Wearing a suit", "Being rich", "Being famous"], answer: 0 },
-        { id: 'm15', question: "What is integrity?", options: ["Honesty and morals", "Lying", "Cheating", "Stealing"], answer: 0 },
-        { id: 'm16', question: "What is critical thinking?", options: ["Analyzing objectively", "Guessing", "Believing everything", "Ignoring facts"], answer: 0 },
-        { id: 'm17', question: "What is emotional intelligence?", options: ["Managing emotions", "Being emotional", "Ignoring emotions", "Being cold"], answer: 0 },
-        { id: 'm18', question: "What is resilience?", options: ["Recovering from setbacks", "Giving up", "Crying", "Blaming"], answer: 0 },
-        { id: 'm19', question: "What is self-awareness?", options: ["Knowing oneself", "Ignoring oneself", "Copying others", "Hiding"], answer: 0 },
-        { id: 'm20', question: "What is career development?", options: ["Managing career growth", "Getting a job", "Retiring", "Quitting"], answer: 0 }
-    ]
-};
+/* ─── scrollbar-killer injected once ─── */
+const GLOBAL_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  html, body, #root {
+    overflow: hidden !important;
+    height: 100%;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+  html::-webkit-scrollbar, body::-webkit-scrollbar { display: none !important; }
+  * { box-sizing: border-box; }
+  @keyframes se-fadein { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes se-spin   { to { transform: rotate(360deg); } }
+  .se-slide-in { animation: se-fadein .25s ease forwards; }
+`;
 
-const StudentEntry = () => {
-    const navigate = useNavigate();
-    const [formData, setFormData] = useState({
-        name: '',
-        email: '',
-        mobile: '',
-        year: '',
-        department: ''
-    });
+const FEATURES = [
+  { Icon: Bot,         title: 'AI-Powered Interviews',  desc: 'Adaptive questioning engine' },
+  { Icon: BarChart2,   title: 'Real-time Analytics',    desc: 'Instant score & breakdown' },
+  { Icon: ShieldCheck, title: 'Secure Proctoring',      desc: 'Anti-cheat fullscreen mode' },
+  { Icon: Zap,         title: '60-Question Exam',       desc: 'Technical · Domain · Soft skills' },
+];
 
-    const [terminationReason, setTerminationReason] = useState('');
-    const [isMobile, setIsMobile] = useState(false);
-    const [isInitializing, setIsInitializing] = useState(true);
-    const [initStatus, setInitStatus] = useState('');
+export default function StudentEntry() {
+  const navigate = useNavigate();
+  const [tab,      setTab]      = useState('login');
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
+  const [name,     setName]     = useState('');
+  const [status,   setStatus]   = useState(null); // { type: 'err'|'ok', msg }
+  const [busy,     setBusy]     = useState(false);
+  const formRef = useRef(null);
 
-    useEffect(() => {
-        const checkMobile = () => {
-            const minDim = Math.min(window.screen.width, window.screen.height);
-            setIsMobile(minDim < 600);
-        };
+  /* block back navigation during flow */
+  useEffect(() => {
+    window.history.pushState(null, null, window.location.href);
+    const h = () => window.history.pushState(null, null, window.location.href);
+    window.addEventListener('popstate', h);
+    return () => window.removeEventListener('popstate', h);
+  }, []);
 
-        checkMobile();
-        window.addEventListener('resize', checkMobile);
-        return () => window.removeEventListener('resize', checkMobile);
-    }, []);
+  /* clear status when switching tabs */
+  function switchTab(t) {
+    setTab(t);
+    setStatus(null);
+    setName('');
+    setEmail('');
+    setPassword('');
+  }
 
-    // Block navigation
-    useEffect(() => {
-        window.history.pushState(null, null, window.location.href);
-        const handlePopState = () => {
-            window.history.pushState(null, null, window.location.href);
-        };
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
-    }, []);
+  async function handleAuth(e) {
+    e.preventDefault();
+    setBusy(true);
+    setStatus(null);
 
-    // Initialize Database Check
-    useEffect(() => {
-        const checkAndSeedDatabase = async () => {
-            try {
-                setInitStatus('Checking system...');
-                const docRef = doc(db, 'config', 'questions');
-                const docSnap = await getDoc(docRef);
+    const trimEmail = email.trim().toLowerCase();
+    const trimName  = name.trim();
 
-                if (!docSnap.exists()) {
-                    setInitStatus('Initializing Question Bank...');
-                    await setDoc(docRef, INITIAL_DOMAINS);
-                    console.log("Database seeded successfully.");
-                } else {
-                    // Check if incomplete
-                    const data = docSnap.data();
-                    const isComplete = data.Business && data.Business.length >= 20;
-                    if (!isComplete) {
-                        setInitStatus('Updating Question Bank...');
-                        await setDoc(docRef, INITIAL_DOMAINS);
-                        console.log("Database updated successfully.");
-                    }
-                }
-                setInitStatus('');
-                setIsInitializing(false);
-            } catch (error) {
-                console.error("Initialization error:", error);
-                // Fallback to offline mode
-                setInitStatus('Offline Mode: Using local question bank.');
-                setIsInitializing(false);
-            }
-        };
+    try {
+      let user;
 
-        checkAndSeedDatabase();
-    }, []);
+      if (tab === 'signup') {
+        // ── REGISTER ───────────────────────────────────────────────────────────
+        const r = await studentRegister({ name: trimName, email: trimEmail, password });
+        user = r.user;
+        setStatus({ type:'ok', msg: `Account created! Welcome, ${user.name}!` });
+        await new Promise(res => setTimeout(res, 800));
+      } else {
+        // ── LOGIN ──────────────────────────────────────────────────────────────
+        const r = await studentLogin({ email: trimEmail, password });
+        user = r.user;
+      }
 
-    if (isMobile) {
-        return (
-            <div className="min-h-screen flex-center p-4 bg-black text-white">
-                <Card className="w-full max-w-md border-red-500 bg-red-900/20 text-center">
-                    <div className="w-16 h-16 bg-red-500/20 rounded-full flex-center mx-auto mb-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                    </div>
-                    <h2 className="text-xl font-bold text-red-500 mb-2">Device Not Supported</h2>
-                    <p className="text-gray-300">
-                        Cannot be performed in mobile screen, only desktop version.
-                    </p>
-                </Card>
-            </div>
-        );
-    }
-
-    const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-
-        // Clear previous assessment data
-        localStorage.removeItem('scoreData');
-
-        // Check if student already exists and is terminated or completed
-        try {
-            // Check by Email
-            const emailQuery = query(
-                collection(db, 'assessments'),
-                where('email', '==', formData.email)
-            );
-            const emailSnapshot = await getDocs(emailQuery);
-
-            // Check by Details (Name + Dept + Year)
-            const detailsQuery = query(
-                collection(db, 'assessments'),
-                where('name', '==', formData.name),
-                where('department', '==', formData.department),
-                where('year', '==', formData.year)
-            );
-            const detailsSnapshot = await getDocs(detailsQuery);
-
-            // Combine all found documents
-            const allDocs = [...emailSnapshot.docs, ...detailsSnapshot.docs];
-
-            let isTerminated = false;
-            let isCompleted = false;
-            let terminationReason = '';
-
-            allDocs.forEach(doc => {
-                const data = doc.data();
-                if (data.status === 'terminated') {
-                    isTerminated = true;
-                    terminationReason = data.reason;
-                } else if (data.status === 'completed' || data.score !== undefined) {
-                    isCompleted = true;
-                }
-            });
-
-            if (isTerminated) {
-                // Redirect to terminated page
-                if (terminationReason) {
-                    localStorage.setItem('terminationReason', terminationReason);
-                }
-                navigate('/terminated');
-                return;
-            } else if (isCompleted) {
-                // Save details so we can show name if needed (optional)
-                localStorage.setItem('studentDetails', JSON.stringify(formData));
-                navigate('/completed');
-                return;
-            }
-        } catch (error) {
-            console.error("Error checking student status:", error);
+      // Check if previously terminated / completed
+      try {
+        const check = await checkStudentStatus({ email: trimEmail, name: user.name, department: '', year: '' });
+        if (check.isTerminated) {
+          if (check.terminationReason) localStorage.setItem('terminationReason', check.terminationReason);
+          navigate('/terminated');
+          return;
         }
+        if (check.isCompleted) {
+          localStorage.setItem('studentDetails', JSON.stringify({ name: user.name, email: trimEmail, mobile: '', year: '', department: '' }));
+          navigate('/completed');
+          return;
+        }
+      } catch (_) { /* status check is best-effort */ }
 
-        // Save to localStorage
-        localStorage.setItem('studentDetails', JSON.stringify(formData));
-        localStorage.removeItem('testTerminated');
-        localStorage.removeItem('terminationReason');
-        navigate('/assessment');
-    };
+      // Save to localStorage and proceed
+      localStorage.setItem('studentDetails', JSON.stringify({
+        id: user.id, name: user.name, email: trimEmail, mobile: user.mobile || '', year: '', department: ''
+      }));
+      ['testTerminated','terminationReason','scoreData','selectedCompany','selectedJob','resumeScan'].forEach(k => localStorage.removeItem(k));
 
-    return (
-        <div className="min-h-screen flex-center p-4">
-            <Card className="w-full max-w-md animate-fade-in">
-                <h1 className="text-3xl font-bold text-center mb-2 text-gradient">Welcome to Neural Gen-AI Networks</h1>
-                <p className="text-center text-gray-400 mb-8">Enter your details to start the assessment</p>
+      navigate('/select-company');
 
-                {initStatus && (
-                    <div className="mb-4 p-3 bg-indigo-500/20 border border-indigo-500/50 rounded text-center text-indigo-300 animate-pulse text-sm">
-                        {initStatus}
-                    </div>
-                )}
+    } catch (err) {
+      setStatus({ type:'err', msg: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <Input
-                        label="Full Name"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        placeholder="John Doe"
-                        required
-                    />
+  async function handleGoogleAuth() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const fbUser = result.user;
+      
+      const r = await studentGoogleLogin({
+        name: fbUser.displayName || 'Google User',
+        email: fbUser.email
+      });
+      const user = r.user;
 
-                    <Input
-                        label="Email ID"
-                        name="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        placeholder="john@example.com"
-                        required
-                    />
+      try {
+        const check = await checkStudentStatus({ email: user.email, name: user.name, department: '', year: '' });
+        if (check.isTerminated) {
+          if (check.terminationReason) localStorage.setItem('terminationReason', check.terminationReason);
+          navigate('/terminated');
+          return;
+        }
+        if (check.isCompleted) {
+          localStorage.setItem('studentDetails', JSON.stringify({ name: user.name, email: user.email, mobile: '', year: '', department: '' }));
+          navigate('/completed');
+          return;
+        }
+      } catch (_) { /* status check is best-effort */ }
 
-                    <Input
-                        label="Mobile Number"
-                        name="mobile"
-                        type="tel"
-                        value={formData.mobile}
-                        onChange={handleChange}
-                        placeholder="1234567890"
-                        required
-                    />
+      localStorage.setItem('studentDetails', JSON.stringify({
+        id: user.id, name: user.name, email: user.email, mobile: user.mobile || '', year: '', department: ''
+      }));
+      ['testTerminated','terminationReason','scoreData','selectedCompany','selectedJob','resumeScan'].forEach(k => localStorage.removeItem(k));
 
-                    <Input
-                        label="Year of Study"
-                        name="year"
-                        value={formData.year}
-                        onChange={handleChange}
-                        placeholder="e.g. 3rd Year"
-                        required
-                    />
+      navigate('/select-company');
+    } catch (err) {
+      console.error("Google Auth Error:", err);
+      setStatus({ type:'err', msg: err.message || 'Google sign-in failed.' });
+    } finally {
+      setBusy(false);
+    }
+  }
 
-                    <Input
-                        label="Department"
-                        name="department"
-                        value={formData.department}
-                        onChange={handleChange}
-                        placeholder="e.g. Computer Science"
-                        required
-                    />
+  /* ── shared styles ── */
+  const inputWrap = { position:'relative', display:'flex', alignItems:'center', marginBottom:11 };
+  const iconSt    = { position:'absolute', left:10, color:'#94a3b8', pointerEvents:'none', display:'flex' };
+  const inputSt   = { width:'100%', padding:'9px 10px 9px 34px', background:'#f8fafc', border:'1.5px solid #e2e8f0', borderRadius:9, fontSize:14, color:'#1e293b', outline:'none', boxSizing:'border-box', fontFamily:"'Inter',sans-serif", transition:'border-color .2s' };
 
-                    <Button type="submit" className="w-full mt-6" disabled={isInitializing}>
-                        {isInitializing ? 'System Initializing...' : 'Start Assessment'}
-                    </Button>
-                </form>
-            </Card>
+  return (
+    <div style={{ height:'100vh', background:'linear-gradient(135deg,#ede9fe 0%,#f1f5f9 60%,#e0f2fe 100%)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Inter',sans-serif", padding:'1.5rem', overflow:'hidden' }}>
+      <style>{GLOBAL_CSS}</style>
+
+      <div style={{ display:'flex', width:'100%', maxWidth:780, height:540, background:'#fff', borderRadius:20, boxShadow:'0 8px 40px rgba(79,70,229,.13)', overflow:'hidden' }}>
+
+        {/* ── LEFT PANEL ── */}
+        <div style={{ width:320, flexShrink:0, background:'linear-gradient(150deg,#4f46e5 0%,#7c3aed 100%)', padding:'2rem', display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
+          <div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:18 }}>
+              <img src={logoImg} alt="GoGenix" style={{ width:30, height:30, borderRadius:7, objectFit:'contain', background:'rgba(255,255,255,.2)', padding:3 }} />
+              <span style={{ fontSize:14, fontWeight:700, color:'#fff' }}>GoGenix AI</span>
+            </div>
+
+            <h1 style={{ fontSize:19, fontWeight:800, color:'#fff', lineHeight:1.3, margin:'0 0 7px' }}>
+              AI-Powered Interview Platform
+            </h1>
+            <p style={{ fontSize:12, color:'rgba(255,255,255,.72)', lineHeight:1.55, margin:'0 0 18px' }}>
+              Smart, adaptive assessments that match you with the right opportunities.
+            </p>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+              {FEATURES.map(({ Icon, title, desc }) => (
+                <div key={title} style={{ display:'flex', alignItems:'center', gap:9, background:'rgba(255,255,255,.1)', borderRadius:9, padding:'9px 11px' }}>
+                  <div style={{ width:28, height:28, background:'rgba(255,255,255,.18)', borderRadius:7, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <Icon size={13} color="#fff" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:600, color:'#fff' }}>{title}</div>
+                    <div style={{ fontSize:10.5, color:'rgba(255,255,255,.6)' }}>{desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display:'flex', borderTop:'1px solid rgba(255,255,255,.15)', paddingTop:12, marginTop:12 }}>
+            {[['60','Questions'],['60m','Duration']].map(([v,l], i) => (
+              <div key={l} style={{ flex:1, textAlign:'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,.15)' : 'none' }}>
+                <div style={{ fontSize:20, fontWeight:800, color:'#fff' }}>{v}</div>
+                <div style={{ fontSize:9.5, color:'rgba(255,255,255,.6)', textTransform:'uppercase', letterSpacing:'0.06em' }}>{l}</div>
+              </div>
+            ))}
+          </div>
         </div>
-    );
-};
 
-export default StudentEntry;
+        {/* ── RIGHT PANEL ── */}
+        <div style={{ flex:1, padding:'2rem 2.5rem', display:'flex', flexDirection:'column', justifyContent:'center', overflow:'hidden' }}>
+
+          {/* Tabs */}
+          <div style={{ display:'flex', background:'#f1f5f9', borderRadius:9, padding:4, marginBottom:18 }}>
+            {['login','signup'].map(t => (
+              <button key={t} onClick={() => switchTab(t)}
+                style={{ flex:1, padding:'7px 0', border:'none', borderRadius:7, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all .2s',
+                  background: tab === t ? '#4f46e5' : 'transparent',
+                  color:      tab === t ? '#fff' : '#94a3b8',
+                  boxShadow:  tab === t ? '0 2px 8px rgba(79,70,229,.3)' : 'none' }}>
+                {t === 'login' ? 'Sign In' : 'Sign Up'}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ fontSize:16, fontWeight:700, color:'#1e293b', marginBottom:2 }}>
+            {tab === 'login' ? 'Welcome back' : 'Create account'}
+          </div>
+          <div style={{ fontSize:12, color:'#94a3b8', marginBottom:12 }}>
+            {tab === 'login' ? 'Sign in to start your AI assessment' : 'Register to begin your AI interview'}
+          </div>
+
+          {/* Status message */}
+          {status && (
+            <div className="se-slide-in" style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 11px', borderRadius:8, fontSize:12.5, marginBottom:11,
+              background: status.type === 'err' ? '#fee2e2' : '#d1fae5',
+              border: `1px solid ${status.type === 'err' ? '#fca5a5' : '#6ee7b7'}`,
+              color:   status.type === 'err' ? '#dc2626' : '#065f46' }}>
+              {status.type === 'err' ? <AlertCircle size={14} /> : <CheckCircle size={14} />}
+              {status.msg}
+            </div>
+          )}
+
+          <form ref={formRef} onSubmit={handleAuth} style={{ display:'flex', flexDirection:'column' }}>
+
+            {/* Name — only for signup */}
+            {tab === 'signup' && (
+              <div className="se-slide-in">
+                <label style={{ display:'block', fontSize:11.5, fontWeight:500, color:'#64748b', marginBottom:4 }}>Full Name</label>
+                <div style={inputWrap}>
+                  <span style={iconSt}><User size={14} /></span>
+                  <input style={inputSt} type="text" placeholder="John Doe" value={name}
+                    onChange={e => setName(e.target.value)} required autoComplete="name" />
+                </div>
+              </div>
+            )}
+
+            <label style={{ display:'block', fontSize:11.5, fontWeight:500, color:'#64748b', marginBottom:4 }}>Email Address</label>
+            <div style={inputWrap}>
+              <span style={iconSt}><Mail size={14} /></span>
+              <input style={inputSt} type="email" placeholder="john@example.com" value={email}
+                onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+            </div>
+
+            <label style={{ display:'block', fontSize:11.5, fontWeight:500, color:'#64748b', marginBottom:4 }}>Password</label>
+            <div style={inputWrap}>
+              <span style={iconSt}><Lock size={14} /></span>
+              <input style={inputSt} type="password" placeholder="••••••••" value={password}
+                onChange={e => setPassword(e.target.value)} required minLength={6} autoComplete={tab === 'login' ? 'current-password' : 'new-password'} />
+            </div>
+
+            <button type="submit" disabled={busy}
+              style={{ width:'100%', padding:'10px', border:'none', borderRadius:9, background: busy ? '#818cf8' : '#4f46e5', color:'#fff', fontSize:13.5, fontWeight:600, cursor: busy ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontFamily:"'Inter',sans-serif", marginTop:2, transition:'background .2s', boxShadow:'0 4px 14px rgba(79,70,229,.35)' }}>
+              {busy
+                ? <><span style={{ width:14, height:14, border:'2px solid rgba(255,255,255,.3)', borderTopColor:'#fff', borderRadius:'50%', animation:'se-spin .7s linear infinite', display:'inline-block' }} /> Authenticating…</>
+                : <>{tab === 'login' ? 'Sign In' : 'Create Account'} <ArrowRight size={14} /></>
+              }
+            </button>
+          </form>
+
+          {/* Divider + Google */}
+          <div style={{ display:'flex', alignItems:'center', gap:10, margin:'16px 0 16px' }}>
+            <div style={{ flex:1, height:1, background:'#e2e8f0' }} />
+            <span style={{ fontSize:12, color:'#94a3b8' }}>or</span>
+            <div style={{ flex:1, height:1, background:'#e2e8f0' }} />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoogleAuth}
+            disabled={busy}
+            style={{ width:'100%', padding:'10px', border:'1.5px solid #e2e8f0', borderRadius:9, background:'#fff', color:'#374151', fontSize:13.5, fontWeight:600, cursor: busy ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontFamily:"'Inter',sans-serif", transition:'border-color .2s' }}>
+            <svg width="15" height="15" viewBox="0 0 48 48">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.29-8.16 2.29-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Continue with Google
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}

@@ -1,378 +1,245 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
-import Card from '../components/Card';
+import {
+  BarChart2, Building2, Briefcase, FileText, Bot, XCircle, FileQuestion,
+  LogOut, RefreshCw, Users, CheckCircle2, AlertTriangle, Zap, ZapOff
+} from 'lucide-react';
+import { getAssessments, getTerminatedAssessments, getAIConfig, setAIConfig } from '../firebaseConfig';
+import CompaniesTab    from './admin/CompaniesTab';
+import JobsTab         from './admin/JobsTab';
+import ResumeTab       from './admin/ResumeTab';
+import AIAssessmentsTab from './admin/AIAssessmentsTab';
+import QuestionsTemplateTab from './admin/QuestionsTemplateTab';
+import logoImg from '../assets/logo.png';
 
-const AdminDashboard = () => {
-    const [students, setStudents] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [selectedStudent, setSelectedStudent] = useState(null);
-    const [showTerminatedModal, setShowTerminatedModal] = useState(false);
-    const [terminatedStudents, setTerminatedStudents] = useState([]);
-    const [totalStudentsCount, setTotalStudentsCount] = useState(0);
-    const navigate = useNavigate();
+const S = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+*{box-sizing:border-box;}
+.ad-wrap{min-height:100vh;background:#0a0a0f;font-family:'Inter',sans-serif;color:#f1f5f9;}
+.ad-header{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;border-bottom:1px solid rgba(255,255,255,.06);background:#0d0d16;gap:1rem;flex-wrap:wrap;}
+.ad-logo{display:flex;align-items:center;gap:.65rem;}
+.ad-logo img{width:36px;height:36px;border-radius:9px;object-fit:contain;}
+.ad-logo-name{font-size:1rem;font-weight:700;color:#f1f5f9;}
+.ad-header-right{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;}
+.ad-stat{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:.38rem .85rem;font-size:.8rem;color:#94a3b8;display:flex;align-items:center;gap:.35rem;}
+.ad-stat strong{color:#f1f5f9;}
+.ad-logout{display:flex;align-items:center;gap:.4rem;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:.38rem .85rem;color:#f87171;font-size:.8rem;cursor:pointer;font-weight:600;}
+.ad-logout:hover{background:rgba(239,68,68,.18);}
+/* AI Toggle */
+.ai-toggle{display:flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:.38rem .85rem;font-size:.8rem;cursor:pointer;transition:all .25s;}
+.ai-toggle.on{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.06);color:#34d399;}
+.ai-toggle.off{border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.05);color:#f87171;}
+.ai-switch{width:34px;height:18px;border-radius:50px;position:relative;transition:background .25s;}
+.ai-switch.on{background:#34d399;}
+.ai-switch.off{background:rgba(239,68,68,.4);}
+.ai-switch::after{content:'';position:absolute;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .25s;box-shadow:0 1px 3px rgba(0,0,0,.4);}
+.ai-switch.on::after{left:18px;}
+.ai-switch.off::after{left:2px;}
+/* Nav */
+.ad-nav{display:flex;gap:0;padding:0 2rem;background:#0d0d16;border-bottom:1px solid rgba(255,255,255,.06);overflow-x:auto;}
+.ad-tab{display:inline-flex;align-items:center;gap:.4rem;padding:.8rem 1.1rem;font-size:.845rem;font-weight:500;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s;background:none;border-top:none;border-left:none;border-right:none;}
+.ad-tab:hover{color:#94a3b8;}
+.ad-tab.active{color:#a5b4fc;border-bottom-color:#6366f1;}
+.ad-body{padding:2rem;max-width:1400px;margin:0 auto;}
+/* Tables */
+.ad-table{width:100%;border-collapse:collapse;}
+.ad-table th{padding:.75rem 1rem;background:rgba(255,255,255,.04);color:#64748b;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;text-align:left;border-bottom:1px solid rgba(255,255,255,.06);}
+.ad-table td{padding:.85rem 1rem;border-bottom:1px solid rgba(255,255,255,.04);font-size:.875rem;color:#cbd5e1;vertical-align:middle;}
+.ad-table tr:hover td{background:rgba(99,102,241,.04);}
+.rank-badge{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;}
+.score-bar-wrap{display:flex;align-items:center;gap:.5rem;}
+.score-bar{height:6px;width:80px;background:rgba(255,255,255,.07);border-radius:50px;overflow:hidden;}
+.score-fill{height:100%;background:linear-gradient(90deg,#6366f1,#a855f7);border-radius:50px;}
+.icon-btn{background:none;border:none;cursor:pointer;padding:.35rem;border-radius:6px;transition:background .2s;color:#6366f1;}
+.icon-btn:hover{background:rgba(99,102,241,.1);}
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:100;padding:1rem;}
+.modal-box{background:#0d0d16;border:1px solid rgba(99,102,241,.3);border-radius:16px;width:100%;max-width:580px;max-height:88vh;overflow-y:auto;}
+.modal-header{padding:1.5rem;border-bottom:1px solid rgba(255,255,255,.07);display:flex;justify-content:space-between;align-items:start;}
+.modal-name{font-size:1.4rem;font-weight:800;color:#f1f5f9;}
+.modal-close{background:none;border:none;color:#64748b;cursor:pointer;padding:.25rem;}
+.modal-body{padding:1.5rem;}
+.domain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin:.75rem 0;}
+.domain-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:.85rem;text-align:center;}
+.domain-score{font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.domain-name{font-size:.75rem;color:#64748b;margin-top:.2rem;}
+.term-badge{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:#f87171;padding:.2rem .6rem;border-radius:50px;font-size:.7rem;font-weight:700;}
+.empty-row{padding:2rem;text-align:center;color:#475569;}
+@keyframes spin{to{transform:rotate(360deg);}}
+`;
 
-    const fetchTerminatedStudents = async () => {
-        try {
-            // Note: Compound queries with orderBy might require an index. 
-            // If it fails, we'll try without orderBy or handle the error.
-            const q = query(collection(db, "assessments"), where("status", "==", "terminated"));
-            const querySnapshot = await getDocs(q);
-            const results = [];
-            querySnapshot.forEach((doc) => {
-                results.push({ id: doc.id, ...doc.data() });
-            });
-            // Sort client-side if needed to avoid index issues for now
-            results.sort((a, b) => {
-                const timeA = a.completedAt?.seconds || a.timestamp?.seconds || 0;
-                const timeB = b.completedAt?.seconds || b.timestamp?.seconds || 0;
-                return timeB - timeA;
-            });
-            setTerminatedStudents(results);
-            setShowTerminatedModal(true);
-        } catch (error) {
-            console.error("Error fetching terminated students: ", error);
-            alert("Failed to fetch terminated students. Check console for details.");
-        }
-    };
+const TABS = [
+  { id: 'results',    icon: BarChart2,      label: 'Results' },
+  { id: 'companies',  icon: Building2,      label: 'Companies' },
+  { id: 'jobs',       icon: Briefcase,      label: 'Jobs' },
+  { id: 'templates',  icon: FileQuestion,   label: 'Questions Template' },
+  { id: 'resume',     icon: FileText,       label: 'Resumes' },
+  { id: 'ai',         icon: Bot,            label: 'AI Assessments' },
+  { id: 'terminated', icon: XCircle,        label: 'Terminated' },
+];
 
-    useEffect(() => {
-        const isAuthenticated = localStorage.getItem('adminAuthenticated');
-        if (!isAuthenticated) {
-            navigate('/admin-login');
-            return;
-        }
-        const fetchResults = async () => {
-            try {
-                const q = query(collection(db, "assessments"));
-                const querySnapshot = await getDocs(q);
-                setTotalStudentsCount(querySnapshot.size);
-                const results = [];
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    if (data.status !== 'terminated') {
-                        const totalQuestions = data.totalQuestions || 60;
-                        const percentage = data.percentage !== undefined ? data.percentage : ((data.score || 0) / totalQuestions) * 100;
-                        results.push({ id: doc.id, ...data, totalQuestions, percentage });
-                    }
-                });
-                // Sort client-side to avoid index issues
-                results.sort((a, b) => (b.score || 0) - (a.score || 0));
-                const rankedResults = results.map((student, index) => ({
-                    ...student,
-                    rank: index + 1
-                }));
-                setStudents(rankedResults);
-            } catch (error) {
-                console.error("Error fetching data: ", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchResults();
-    }, [navigate]);
+export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const [tab, setTab] = useState('results');
+  const [students, setStudents] = useState([]);
+  const [terminated, setTerminated] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiToggling, setAiToggling] = useState(false);
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex-center">
-                <div className="text-2xl text-indigo-500 animate-pulse">Loading Dashboard...</div>
-            </div>
-        );
-    }
+  useEffect(() => {
+    if (!localStorage.getItem('adminAuthenticated')) { navigate('/admin-login'); return; }
+    Promise.all([getAssessments(), getTerminatedAssessments(), getAIConfig()])
+      .then(([all, term, cfg]) => {
+        setTotalCount(all.length + term.length);
+        const ranked = all.filter(d => d.status !== 'terminated')
+          .sort((a, b) => (b.score || 0) - (a.score || 0))
+          .map((s, i) => ({ ...s, rank: i + 1, totalQuestions: s.totalQuestions || 60, percentage: s.percentage ?? ((s.score || 0) / (s.totalQuestions || 60)) * 100 }));
+        setStudents(ranked);
+        setTerminated(term);
+        setAiEnabled(cfg.ai_enabled);
+      }).catch(console.error).finally(() => setLoading(false));
+  }, []);
 
-    return (
-        <div className="min-h-screen p-8">
-            <div className="container mx-auto">
-                <header className="mb-8 flex justify-between items-center">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gradient">Admin Dashboard</h1>
-                        <p className="text-gray-400">Monitor student performance and rankings</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="bg-slate-800 px-4 py-2 rounded-lg border border-slate-700">
-                            <span className="text-gray-400">Total Students:</span>
-                            <span className="ml-2 text-xl font-bold text-white">{totalStudentsCount}</span>
-                        </div>
-                        <button
-                            onClick={fetchTerminatedStudents}
-                            className="bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/50 px-4 py-2 rounded-lg transition-colors font-medium flex items-center gap-2"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <line x1="15" y1="9" x2="9" y2="15"></line>
-                                <line x1="9" y1="9" x2="15" y2="15"></line>
-                            </svg>
-                            Terminated Details
-                        </button>
-                        <button
-                            onClick={() => navigate('/question-bank')}
-                            className="bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 border border-indigo-500/50 px-4 py-2 rounded-lg transition-colors font-medium flex items-center gap-2"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 2v6h-6"></path>
-                                <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
-                                <path d="M3 22v-6h6"></path>
-                                <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
-                            </svg>
-                            Update
-                        </button>
-                        <button
-                            onClick={() => {
-                                localStorage.removeItem('adminAuthenticated');
-                                navigate('/admin-login');
-                            }}
-                            className="text-red-400 hover:text-red-300 p-2 rounded-full transition-colors"
-                            style={{ backgroundColor: 'transparent', border: 'none', outline: 'none' }}
-                            title="Logout"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                                <polyline points="16 17 21 12 16 7" />
-                                <line x1="21" y1="12" x2="9" y2="12" />
-                            </svg>
-                        </button>
-                    </div>
-                </header>
+  const logout = () => { localStorage.removeItem('adminAuthenticated'); navigate('/admin-login'); };
 
-                <Card className="overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-slate-700 text-gray-400 text-sm uppercase tracking-wider">
-                                    <th className="p-4 font-medium">Rank</th>
-                                    <th className="p-4 font-medium">Student Name</th>
-                                    <th className="p-4 font-medium">Email</th>
-                                    <th className="p-4 font-medium">Mobile</th>
-                                    <th className="p-4 font-medium">Department</th>
-                                    <th className="p-4 font-medium">Year</th>
-                                    <th className="p-4 font-medium">Score</th>
-                                    <th className="p-4 font-medium">Percentage</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-700">
-                                {students.map((student) => (
-                                    <tr key={student.id} className="hover:bg-slate-700/30 transition-colors">
-                                        <td className="p-4">
-                                            <div className={`
-                        w-8 h-8 flex-center rounded-full font-bold
-                        ${student.rank === 1 ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/50' :
-                                                    student.rank === 2 ? 'bg-gray-400/20 text-gray-400 border border-gray-400/50' :
-                                                        student.rank === 3 ? 'bg-orange-700/20 text-orange-700 border border-orange-700/50' :
-                                                            'bg-slate-800 text-slate-400'}
-                      `}>
-                                                {student.rank}
-                                            </div>
-                                        </td>
-                                        <td className="p-4 font-medium text-white">{student.name}</td>
-                                        <td className="p-4 text-gray-300">{student.email || '-'}</td>
-                                        <td className="p-4 text-gray-300">{student.mobile || '-'}</td>
-                                        <td className="p-4 text-gray-300">{student.department}</td>
-                                        <td className="p-4 text-gray-300">{student.year}</td>
-                                        <td className="p-4 font-bold text-indigo-400">{student.score} / {student.totalQuestions}</td>
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-24 h-2 bg-slate-700 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
-                                                        style={{ width: `${student.percentage || 0}%` }}
-                                                    />
-                                                </div>
-                                                <span className="text-sm text-gray-400">{(student.percentage || 0).toFixed(0)}%</span>
-                                                <button
-                                                    onClick={() => setSelectedStudent(student)}
-                                                    className="ml-2 p-1 text-indigo-400 hover:text-indigo-300 rounded-full transition-colors bg-transparent hover:bg-transparent"
-                                                    style={{ backgroundColor: 'transparent', border: 'none', outline: 'none' }}
-                                                    title="View Detailed Progress"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <circle cx="12" cy="12" r="10" />
-                                                        <line x1="12" y1="16" x2="12" y2="12" />
-                                                        <line x1="12" y1="8" x2="12.01" y2="8" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+  async function toggleAI() {
+    setAiToggling(true);
+    try {
+      const r = await setAIConfig(!aiEnabled);
+      setAiEnabled(r.ai_enabled);
+    } catch (e) { console.error(e); }
+    finally { setAiToggling(false); }
+  }
 
-                                {students.length === 0 && (
-                                    <tr>
-                                        <td colSpan="8" className="p-8 text-center text-gray-500">
-                                            No assessments submitted yet.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </Card>
-            </div>
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: '#0a0a0f', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1', fontFamily: 'Inter,sans-serif', fontSize: '1.1rem' }}>
+      Loading Dashboard…
+    </div>
+  );
 
-            {selectedStudent && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex-center z-50 p-4" onClick={() => setSelectedStudent(null)}>
-                    <Card className="w-full max-w-2xl animate-fade-in overflow-hidden border border-indigo-500/30 shadow-glow" onClick={(e) => e.stopPropagation()}>
-                        <div className="bg-slate-800/50 p-6 border-b border-slate-700 flex justify-between items-start">
-                            <div>
-                                <h2 className="text-3xl font-bold text-white mb-1">{selectedStudent.name}</h2>
-                                <div className="flex items-center gap-3 text-sm">
-                                    <span className="px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30">
-                                        {selectedStudent.department}
-                                    </span>
-                                    <span className="text-gray-400">•</span>
-                                    <span className="text-gray-300">{selectedStudent.year}</span>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setSelectedStudent(null)}
-                                className="text-red-500 hover:text-red-400 transition-colors p-1 rounded-full bg-transparent hover:bg-transparent"
-                                style={{ backgroundColor: 'transparent', border: 'none', outline: 'none' }}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
-                            </button>
-                        </div>
+  return (
+    <div className="ad-wrap">
+      <style>{S}</style>
 
-                        <div className="p-4">
-                            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500">
-                                    <line x1="18" y1="20" x2="18" y2="10" />
-                                    <line x1="12" y1="20" x2="12" y2="4" />
-                                    <line x1="6" y1="20" x2="6" y2="14" />
-                                </svg>
-                                Domain Performance Reports
-                            </h3>
-
-                            <div className="mt-4 bg-slate-800/50 rounded-xl p-4 border border-slate-700 relative">
-                                <h4 className="text-gray-400 text-sm font-medium mb-6 uppercase tracking-wider">Performance Distribution</h4>
-                                <div className="flex justify-center gap-12 px-4 ml-8 mb-4">
-                                    {['Business', 'Technical', 'Mentorship'].map((domain) => {
-                                        // Check for various key formats
-                                        const score = selectedStudent.domainScores?.[domain] ||
-                                            selectedStudent.domainScores?.[domain.toLowerCase()] ||
-                                            selectedStudent.domainScores?.[domain === 'Mentorship' ? 'mentor' : ''] ||
-                                            0;
-                                        const maxScore = 20;
-                                        const percentage = (score / maxScore) * 100;
-                                        return (
-                                            <div key={domain} className="flex-1 text-center">
-                                                <div className="text-white font-bold text-sm mb-1">{domain}</div>
-                                                <div className="text-gray-400 text-xs">
-                                                    Score: <span className="text-indigo-400 font-mono">{score}/{maxScore}</span>
-                                                </div>
-                                                <div className="text-gray-500 text-[10px] font-mono">({percentage.toFixed(0)}%)</div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                <div className="h-56 flex items-end justify-center gap-12 relative px-4 ml-8">
-
-                                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-                                        {[...Array(5)].map((_, i) => (
-                                            <div key={i} className="w-full border-t border-slate-700/30 h-0"></div>
-                                        ))}
-                                    </div>
-                                    {['Business', 'Technical', 'Mentorship'].map((domain) => {
-                                        // Check for various key formats
-                                        const score = selectedStudent.domainScores?.[domain] ||
-                                            selectedStudent.domainScores?.[domain.toLowerCase()] ||
-                                            selectedStudent.domainScores?.[domain === 'Mentorship' ? 'mentor' : ''] ||
-                                            0;
-                                        const maxScore = 20;
-                                        const percentage = (score / maxScore) * 100;
-                                        const colors = {
-                                            Business: { bg: 'bg-red-500', line: 'bg-red-400', shadow: 'shadow-red-glow' },
-                                            Technical: { bg: 'bg-green-500', line: 'bg-green-400', shadow: 'shadow-green-glow' },
-                                            Mentorship: { bg: 'bg-yellow-500', line: 'bg-yellow-400', shadow: 'shadow-yellow-glow' }
-                                        };
-                                        const colorConfig = colors[domain] || { bg: 'bg-teal-600', line: 'bg-teal-400', shadow: 'shadow-glow' };
-                                        return (
-                                            <div key={domain} className="w-20 h-full flex flex-col justify-end items-center relative group z-10">
-                                                <div
-                                                    className={`w-full rounded-t-md ${colorConfig.bg} transition-all duration-1000 ease-out relative`}
-                                                    style={{ height: `${Math.max(percentage, 5)}%` }}
-                                                >
-                                                    <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent"></div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    </Card>
-                </div>
-            )}
-
-            {showTerminatedModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex-center z-50 p-4" onClick={() => setShowTerminatedModal(false)}>
-                    <Card className="w-full max-w-4xl animate-fade-in overflow-hidden border border-red-500/30 shadow-red-glow" onClick={(e) => e.stopPropagation()}>
-                        <div className="bg-red-900/20 p-6 border-b border-red-500/30 flex justify-between items-center">
-                            <h2 className="text-2xl font-bold text-red-400 flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                                    <line x1="12" y1="9" x2="12" y2="13"></line>
-                                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                                </svg>
-                                Terminated Students
-                            </h2>
-                            <button
-                                onClick={() => setShowTerminatedModal(false)}
-                                className="text-gray-400 hover:text-white transition-colors"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
-                            </button>
-                        </div>
-                        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-800/50 sticky top-0">
-                                    <tr className="border-b border-slate-700 text-gray-400 text-sm uppercase tracking-wider">
-                                        <th className="p-4 font-medium">Name</th>
-                                        <th className="p-4 font-medium">Email</th>
-                                        <th className="p-4 font-medium">Mobile</th>
-                                        <th className="p-4 font-medium">Department</th>
-                                        <th className="p-4 font-medium">Year</th>
-                                        <th className="p-4 font-medium">Reason</th>
-                                        <th className="p-4 font-medium">Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-700">
-                                    {terminatedStudents.map((student) => (
-                                        <tr key={student.id} className="hover:bg-red-500/10 transition-colors">
-                                            <td className="p-4 font-medium text-white">{student.name}</td>
-                                            <td className="p-4 text-gray-300">{student.email || '-'}</td>
-                                            <td className="p-4 text-gray-300">{student.mobile || '-'}</td>
-                                            <td className="p-4 text-gray-300">{student.department}</td>
-                                            <td className="p-4 text-gray-300">{student.year}</td>
-                                            <td className="p-4 text-red-400 font-medium">{student.reason}</td>
-                                            <td className="p-4 text-gray-400 text-sm">
-                                                {(student.completedAt?.seconds || student.timestamp?.seconds) ?
-                                                    new Date((student.completedAt?.seconds || student.timestamp?.seconds) * 1000).toLocaleString()
-                                                    : 'N/A'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {terminatedStudents.length === 0 && (
-                                        <tr>
-                                            <td colSpan="7" className="p-8 text-center text-gray-500">
-                                                No terminated students found.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </Card>
-                </div>
-            )}
+      {/* Header */}
+      <div className="ad-header">
+        <div className="ad-logo">
+          <img src={logoImg} alt="GoGenix" />
+          <span className="ad-logo-name">GoGenix Admin</span>
         </div>
-    );
-};
+        <div className="ad-header-right">
+          <div className="ad-stat"><Users size={13} /> Total <strong>{totalCount}</strong></div>
+          <div className="ad-stat"><CheckCircle2 size={13} color="#34d399" /> Completed <strong>{students.length}</strong></div>
+          <div className="ad-stat"><AlertTriangle size={13} color="#f87171" /> Terminated <strong>{terminated.length}</strong></div>
 
-export default AdminDashboard;
+          {/* AI Toggle */}
+          <button
+            className={`ai-toggle ${aiEnabled ? 'on' : 'off'}`}
+            onClick={toggleAI}
+            disabled={aiToggling}
+            title={aiEnabled ? 'AI Generation ON — click to disable' : 'AI Generation OFF — click to enable'}
+          >
+            {aiEnabled ? <Zap size={14} /> : <ZapOff size={14} />}
+            AI {aiEnabled ? 'Enabled' : 'Disabled'}
+            <span className={`ai-switch ${aiEnabled ? 'on' : 'off'}`} />
+          </button>
+
+          <button className="ad-logout" onClick={logout}><LogOut size={14} /> Logout</button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="ad-nav">
+        {TABS.map(t => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} className={`ad-tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>
+              <Icon size={14} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="ad-body">
+        {tab === 'companies'  && <CompaniesTab />}
+        {tab === 'jobs'       && <JobsTab />}
+        {tab === 'resume'     && <ResumeTab />}
+        {tab === 'ai'         && <AIAssessmentsTab />}
+        {tab === 'templates'  && <QuestionsTemplateTab />}
+
+        {tab === 'results' && (
+          <table className="ad-table">
+            <thead><tr>
+              <th>Rank</th><th>Name</th><th>Email</th><th>Score</th><th>%</th><th>Dept</th><th>Year</th><th></th>
+            </tr></thead>
+            <tbody>
+              {students.length === 0 && <tr><td colSpan="8" className="empty-row">No assessments yet.</td></tr>}
+              {students.map(s => (
+                <tr key={s.id}>
+                  <td><div className="rank-badge" style={{ background: s.rank === 1 ? 'rgba(234,179,8,.15)' : s.rank === 2 ? 'rgba(148,163,184,.1)' : s.rank === 3 ? 'rgba(180,83,9,.15)' : 'rgba(255,255,255,.05)', color: s.rank === 1 ? '#eab308' : s.rank === 2 ? '#94a3b8' : s.rank === 3 ? '#b45309' : '#64748b' }}>{s.rank}</div></td>
+                  <td style={{ fontWeight: 600, color: '#f1f5f9' }}>{s.name}</td>
+                  <td>{s.email || '-'}</td>
+                  <td style={{ fontWeight: 700, color: '#818cf8' }}>{s.score}/{s.totalQuestions}</td>
+                  <td><div className="score-bar-wrap"><div className="score-bar"><div className="score-fill" style={{ width: `${s.percentage}%` }} /></div><span style={{ fontSize: '.8rem', color: '#64748b' }}>{Number(s.percentage).toFixed(0)}%</span></div></td>
+                  <td>{s.department || '-'}</td>
+                  <td>{s.year || '-'}</td>
+                  <td><button className="icon-btn" onClick={() => setSelected(s)}><BarChart2 size={15} /></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {tab === 'terminated' && (
+          <table className="ad-table">
+            <thead><tr>
+              <th>Name</th><th>Email</th><th>Dept</th><th>Year</th><th>Reason</th><th>Time</th>
+            </tr></thead>
+            <tbody>
+              {terminated.length === 0 && <tr><td colSpan="6" className="empty-row">No terminated students.</td></tr>}
+              {terminated.map(s => (
+                <tr key={s.id}>
+                  <td style={{ fontWeight: 600, color: '#f1f5f9' }}>{s.name}</td>
+                  <td>{s.email || '-'}</td>
+                  <td>{s.department || '-'}</td>
+                  <td>{s.year || '-'}</td>
+                  <td><span className="term-badge">{s.reason}</span></td>
+                  <td style={{ color: '#475569', fontSize: '.78rem' }}>{s.completedAt ? new Date(s.completedAt).toLocaleString() : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Student Detail Modal */}
+      {selected && (
+        <div className="modal-bg" onClick={() => setSelected(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <div className="modal-name">{selected.name}</div>
+                <div style={{ color: '#64748b', fontSize: '.85rem', marginTop: '.25rem' }}>{selected.email} · {selected.department} · {selected.year}</div>
+              </div>
+              <button className="modal-close" onClick={() => setSelected(null)}><XCircle size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                <div style={{ fontSize: '2.5rem', fontWeight: 800, background: 'linear-gradient(135deg,#6366f1,#a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{selected.score}/{selected.totalQuestions}</div>
+                <div style={{ color: '#64748b', fontSize: '.85rem' }}>{Number(selected.percentage).toFixed(1)}% Score</div>
+              </div>
+              <div className="domain-grid">
+                {Object.entries(selected.domainScores || {}).map(([d, sc]) => (
+                  <div key={d} className="domain-card"><div className="domain-score">{sc}</div><div className="domain-name">{d}</div></div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

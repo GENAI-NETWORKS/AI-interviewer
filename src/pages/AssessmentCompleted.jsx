@@ -8,7 +8,7 @@ const AssessmentCompleted = () => {
     const location = useLocation();
 
     // Try to get data from location state, otherwise fallback to localStorage
-    let { score, totalQuestions, percentage, domainScores, studentDetails } = location.state || {};
+    let { score, totalQuestions, percentage, studentDetails } = location.state || {};
 
     if (score === undefined) {
         const savedScoreData = localStorage.getItem('scoreData');
@@ -19,7 +19,6 @@ const AssessmentCompleted = () => {
             score = parsedScoreData.score;
             totalQuestions = parsedScoreData.totalQuestions;
             percentage = (score / totalQuestions) * 100;
-            domainScores = parsedScoreData.domainScores;
         }
 
         if (savedStudentDetails) {
