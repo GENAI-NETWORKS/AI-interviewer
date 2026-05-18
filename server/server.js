@@ -5,7 +5,13 @@ const pool = require('./db');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: '*', methods: ['GET','POST','PUT','DELETE'], allowedHeaders: ['Content-Type'] }));
+app.use(cors({
+  origin: '*',
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  optionsSuccessStatus: 200
+}));
+app.options('*', cors()); // Handle preflight for all routes
 app.use(express.json({ limit: '20mb' }));
 
 // ── DB Init ──────────────────────────────────────────────────────────────────
